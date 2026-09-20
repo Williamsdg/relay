@@ -257,12 +257,18 @@ export async function sisuAuthorize(
 export async function getXstsToken(
   key: ProofKeyPair,
   tokens: SisuAuthorizeResponse,
+  /**
+   * The device token from step 2. SISU's authorize response does not echo one
+   * back, so without this the XSTS request would be missing a required field
+   * and the service rejects it with a bare 400.
+   */
+  deviceToken: string,
   relyingParty = GSSV_RELYING_PARTY,
 ): Promise<XstsToken> {
   log.info('auth', `Requesting XSTS token for ${relyingParty}`)
   const props = {
     SandboxId: 'RETAIL',
-    DeviceToken: tokenValue(tokens.DeviceToken, 'DeviceToken'),
+    DeviceToken: tokens.DeviceToken ? tokenValue(tokens.DeviceToken, 'DeviceToken') : deviceToken,
     TitleToken: tokenValue(tokens.TitleToken, 'TitleToken'),
     UserTokens: [tokenValue(tokens.UserToken, 'UserToken')],
   }
@@ -363,7 +369,7 @@ export async function acquireStreamingToken(
 ): Promise<XstsToken> {
   const tokens = await sisuAuthorize(key, accessToken, deviceToken)
   try {
-    return await getXstsToken(key, tokens)
+    return await getXstsToken(key, tokens, deviceToken)
   } catch (err) {
     log.warn('auth', `XSTS exchange failed (${String(err)}); asking SISU directly`)
     const direct = await sisuAuthorize(key, accessToken, deviceToken, GSSV_RELYING_PARTY)

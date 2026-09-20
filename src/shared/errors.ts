@@ -34,11 +34,12 @@ export function classifyError(input: string): ClassifiedError {
   // nothing for it to push a start command to.
   if (/WaitingForServerToRegister|ErrorCallingWNS/i.test(raw)) {
     return {
-      title: 'Your Xbox isn’t reachable',
+      title: 'Your Xbox hasn’t registered for streaming',
       guidance:
-        'The streaming service could not reach the console. On the Xbox: turn it on, then go to ' +
-        'Settings → Devices & connections → Remote features and make sure “Enable remote features” ' +
-        'is checked and Power mode is set to Instant-on. Leave it on for a minute so it registers, ' +
+        'Xbox accepted the request but could not reach the console — it has not registered with ' +
+        'the streaming service. Standby alone is not enough. Wake the console fully (press the ' +
+        'Xbox button), confirm Settings → Devices & connections → Remote features → “Enable ' +
+        'remote features” is checked, leave it on the dashboard for a minute so it registers, ' +
         'then try again.',
       retryable: false,
       raw,
