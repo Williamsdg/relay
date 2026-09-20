@@ -30,6 +30,8 @@ export interface StreamStats {
   input: string
   /** Which physical controllers the browser can currently see. */
   controllers: string
+  /** The kind of network path media is taking (host / srflx / relay). */
+  path: string
   fps: number
   bitrateKbps: number
   rttMs: number
@@ -43,6 +45,7 @@ export interface StreamStats {
 const EMPTY_STATS: StreamStats = {
   input: 'neutral',
   controllers: 'none detected',
+  path: '—',
   fps: 0,
   bitrateKbps: 0,
   rttMs: 0,
@@ -53,10 +56,31 @@ const EMPTY_STATS: StreamStats = {
   codec: '—',
 }
 
-const ICE_SERVERS: RTCIceServer[] = [
+/**
+ * Public fallbacks. The streaming service usually nominates its own STUN
+ * server in the session configuration; these are used alongside it, and alone
+ * if it does not.
+ */
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
 ]
+
+/** Build the ICE server list, preferring whatever the service told us to use. */
+function iceServers(stunServerAddress?: string | null): RTCIceServer[] {
+  if (!stunServerAddress) return FALLBACK_ICE_SERVERS
+  const url = stunServerAddress.startsWith('stun:')
+    ? stunServerAddress
+    : `stun:${stunServerAddress}`
+  return [{ urls: url }, ...FALLBACK_ICE_SERVERS]
+}
+
+/** Coarse type of an ICE candidate, for diagnosing NAT problems. */
+function candidateType(candidate: string): string {
+  const match = /\btyp\s+(\w+)/.exec(candidate)
+  return match ? match[1] : 'unknown'
+}
 
 /** Channel name -> SCTP protocol label the console expects. */
 const DATA_CHANNELS: Array<{ name: string; protocol: string; ordered?: boolean }> = [
@@ -219,14 +243,34 @@ export class ConnectionManager {
       })
 
       this.setPhase('negotiating', 'Negotiating the media connection')
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+      const stun = config.serverDetails?.stunServerAddress
+      if (stun) log(`using the service's STUN server: ${stun}`)
+      const pc = new RTCPeerConnection({ iceServers: iceServers(stun) })
       this.pc = pc
 
       // Collect candidates as they trickle in; the service takes them as one
       // batch rather than incrementally.
       const localCandidates: RTCIceCandidateInit[] = []
+      const localTypes = new Map<string, number>()
       pc.addEventListener('icecandidate', (event) => {
-        if (event.candidate) localCandidates.push(event.candidate.toJSON())
+        if (!event.candidate) return
+        localCandidates.push(event.candidate.toJSON())
+        const type = candidateType(event.candidate.candidate)
+        localTypes.set(type, (localTypes.get(type) ?? 0) + 1)
+      })
+
+      pc.addEventListener('iceconnectionstatechange', () => {
+        log(`ICE connection state: ${pc.iceConnectionState}`)
+        if (pc.iceConnectionState === 'failed') {
+          const summary = [...localTypes].map(([t, n]) => `${t}×${n}`).join(' ') || 'none'
+          window.relay.log.write(
+            'error',
+            'webrtc',
+            `ICE failed. Local candidates were: ${summary}. ` +
+              'No "srflx" candidate means STUN could not see a public address; ' +
+              'only relayed media would work from this network.',
+          )
+        }
       })
 
       // Build our own MediaStream from the arriving tracks rather than relying
@@ -319,6 +363,10 @@ export class ConnectionManager {
       this.setPhase('connecting', 'Exchanging network routes')
       await this.waitForIceGathering(pc)
 
+      log(
+        `local ICE candidates: ` +
+          ([...localTypes].map(([t, n]) => `${t}×${n}`).join(' ') || 'none'),
+      )
       const remote = await window.relay.session.ice(localCandidates)
       for (const candidate of remote) {
         try {
@@ -584,6 +632,11 @@ export class ConnectionManager {
 
         if (entry.type === 'candidate-pair' && entry.state === 'succeeded' && entry.nominated) {
           next.rttMs = Math.round((entry.currentRoundTripTime ?? 0) * 1000)
+          const local = report.get(entry.localCandidateId)
+          const remoteCand = report.get(entry.remoteCandidateId)
+          if (local && remoteCand) {
+            next.path = `${local.candidateType} → ${remoteCand.candidateType}`
+          }
         }
 
         if (entry.type === 'codec' && entry.mimeType?.startsWith('video/')) {

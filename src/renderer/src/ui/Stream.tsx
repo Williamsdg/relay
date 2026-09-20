@@ -210,6 +210,7 @@ export function Stream({
           <Row label="Reconnects" value={String(status.reconnects)} />
           <Row label="Input" value={stats.input} />
           <Row label="Controllers" value={stats.controllers} />
+          <Row label="Network path" value={stats.path} />
         </div>
       )}
     </div>

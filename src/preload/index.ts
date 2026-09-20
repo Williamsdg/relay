@@ -16,6 +16,9 @@ import type {
 const api = {
   log: {
     history: (): Promise<LogLine[]> => ipcRenderer.invoke('log:history'),
+    /** Show the on-disk log in Finder, for attaching to a bug report. */
+    reveal: (): Promise<void> => ipcRenderer.invoke('log:reveal'),
+    path: (): Promise<string | null> => ipcRenderer.invoke('log:path'),
     /** Record a renderer-side event (WebRTC, media, input) in the shared log. */
     write: (level: LogLine['level'], scope: string, message: string): void => {
       ipcRenderer.send('log:write', level, scope, message)
@@ -61,7 +64,13 @@ const api = {
       serverId: string
       width: number
       height: number
-    }): Promise<{ handle: SessionHandle; config: { keepAlivePulseInSeconds?: number } }> =>
+    }): Promise<{
+      handle: SessionHandle
+      config: {
+        keepAlivePulseInSeconds?: number
+        serverDetails?: { stunServerAddress?: string | null }
+      }
+    }> =>
       ipcRenderer.invoke('session:start', opts),
     sdp: (offerSdp: string): Promise<{ sdp: string; versions: Record<string, number> }> =>
       ipcRenderer.invoke('session:sdp', offerSdp),

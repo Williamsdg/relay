@@ -7,7 +7,7 @@
  */
 import { ipcMain, dialog, type BrowserWindow } from 'electron'
 import { writeFile } from 'node:fs/promises'
-import { log } from './logger.js'
+import { log, revealLogFile, logFilePath } from './logger.js'
 import { loadSettings, saveSettings, type PersistedState } from './settings.js'
 import {
   acquireStreamingToken,
@@ -100,6 +100,8 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   log.subscribe((line) => getWindow()?.webContents.send('log', line))
 
   ipcMain.handle('log:history', () => log.history())
+  ipcMain.handle('log:reveal', () => revealLogFile())
+  ipcMain.handle('log:path', () => logFilePath())
 
   // The renderer owns WebRTC, so its events belong in the same log as the
   // REST calls; otherwise half the connection story is invisible.
