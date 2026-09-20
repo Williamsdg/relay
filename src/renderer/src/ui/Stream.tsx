@@ -198,6 +198,7 @@ export function Stream({
           <Row label="Jitter" value={`${stats.jitterMs} ms`} />
           <Row label="Packets lost" value={String(stats.packetsLost)} />
           <Row label="Reconnects" value={String(status.reconnects)} />
+          <Row label="Input" value={stats.input} />
         </div>
       )}
     </div>

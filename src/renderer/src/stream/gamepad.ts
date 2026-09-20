@@ -138,3 +138,27 @@ export function collectFrames(): InputFrame[] {
   if (virtualActive) virtualPad.mergeInto(frames[0])
   return frames
 }
+
+/** Compact description of what a frame is actually asserting, for the log. */
+export function describeFrame(f: InputFrame): string {
+  const buttons: string[] = []
+  for (const [name, value] of Object.entries(f)) {
+    if (name === 'GamepadIndex') continue
+    if (name.endsWith('Axis') || name.endsWith('Trigger')) continue
+    if (value > 0) buttons.push(name)
+  }
+  const axes: string[] = []
+  for (const name of [
+    'LeftThumbXAxis',
+    'LeftThumbYAxis',
+    'RightThumbXAxis',
+    'RightThumbYAxis',
+    'LeftTrigger',
+    'RightTrigger',
+  ] as const) {
+    const value = f[name]
+    if (value !== 0) axes.push(`${name}=${value.toFixed(3)}`)
+  }
+  if (buttons.length === 0 && axes.length === 0) return 'neutral'
+  return [buttons.join('+') || '-', axes.join(' ')].filter(Boolean).join(' | ')
+}

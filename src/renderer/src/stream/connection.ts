@@ -16,10 +16,12 @@
 import type { StreamSettings, StreamStatus, StreamPhase } from '../../../shared/types.js'
 import { classifyError } from '../../../shared/errors.js'
 import { encodeClientMetadata, encodeGamepadFrames } from './packet.js'
-import { collectFrames, isNeutral } from './gamepad.js'
+import { collectFrames, describeFrame, isNeutral } from './gamepad.js'
 import { virtualPad } from './virtualPad.js'
 
 export interface StreamStats {
+  /** What the app currently believes is pressed — makes a stuck input visible. */
+  input: string
   fps: number
   bitrateKbps: number
   rttMs: number
@@ -31,6 +33,7 @@ export interface StreamStats {
 }
 
 const EMPTY_STATS: StreamStats = {
+  input: 'neutral',
   fps: 0,
   bitrateKbps: 0,
   rttMs: 0,
@@ -88,6 +91,7 @@ export class ConnectionManager {
   private media: MediaStream | null = null
   private detachGamepads: (() => void) | null = null
   private gamepadSyncTimer: number | null = null
+  private lastInput = 'neutral'
   private channels = new Map<string, RTCDataChannel>()
   private inputTimer: number | null = null
   private keepaliveTimer: number | null = null
@@ -266,6 +270,19 @@ export class ConnectionManager {
       this.channels.get('control')?.addEventListener('message', (event) => {
         log(`control message: ${decodeChannelMessage(event.data)}`)
       })
+      this.channels.get('message')?.addEventListener('open', () => {
+        // The console expects a handshake here before it will route system UI
+        // messages (guide overlays and the like) to us.
+        this.sendOn('message', {
+          type: 'Handshake',
+          version: 'messageV1',
+          id: crypto.randomUUID(),
+          cv: '',
+        })
+      })
+      this.channels.get('message')?.addEventListener('message', (event) => {
+        log(`message channel: ${decodeChannelMessage(event.data).slice(0, 200)}`)
+      })
 
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
@@ -358,9 +375,13 @@ export class ConnectionManager {
   }
 
   private sendControl(payload: Record<string, unknown>): void {
-    const channel = this.channels.get('control')
+    this.sendOn('control', payload)
+  }
+
+  /** Channel messages travel as UTF-8 encoded JSON, not as text frames. */
+  private sendOn(name: string, payload: Record<string, unknown>): void {
+    const channel = this.channels.get(name)
     if (!channel || channel.readyState !== 'open') return
-    // Control messages travel as UTF-8 encoded JSON, not as text frames.
     channel.send(new TextEncoder().encode(JSON.stringify(payload)))
   }
 
@@ -395,6 +416,7 @@ export class ConnectionManager {
       // Stop resending an all-zero state once the console has it, but always
       // send the first neutral frame after activity so buttons do not stick.
       const neutral = frames.every(isNeutral)
+      this.lastInput = frames.map(describeFrame).join(' / ')
       if (neutral && sentNeutral) return
       sentNeutral = neutral
 
@@ -405,10 +427,10 @@ export class ConnectionManager {
         sentCount += 1
         // Confirm the first real press actually leaves the machine. Beyond
         // that, logging every frame at 62Hz would drown the log.
-        if (sentCount <= 3 || (!neutral && sentCount % 120 === 0)) {
+        if (sentCount <= 6 || sentCount % 300 === 0) {
           log(
-            `input packet #${sentCount}: ${packet.byteLength} bytes, ` +
-              `${frames.length} frame(s), neutral=${neutral}`,
+            `input packet #${sentCount}: ${packet.byteLength}B ` +
+              `[${frames.map(describeFrame).join(' / ')}]`,
           )
         }
       } catch (err) {
@@ -479,6 +501,7 @@ export class ConnectionManager {
         }
       })
 
+      next.input = this.lastInput
       this.lastStatsAt = now
       this.stats = next
       this.cb.onStats(next)
