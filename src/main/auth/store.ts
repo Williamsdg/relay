@@ -1,53 +1,80 @@
 /**
- * Persisted auth state.
- *
- * Holds the proof key and MSA refresh token so a returning user is signed in
- * silently. Contents are encrypted with Electron's safeStorage (backed by the
- * macOS Keychain); if the OS declines to provide encryption we refuse to write
- * plaintext credentials to disk and simply re-prompt for sign-in next launch.
+ * Persisted auth state, encrypted with Electron's safeStorage (macOS Keychain).
  */
-import { app, safeStorage } from 'electron'
+import { app } from 'electron'
+import { createPrivateKey } from 'node:crypto'
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { log } from '../logger.js'
-import type { AuthArtifacts } from './flow.js'
+import { createSecureStore } from '../adapter.js'
+import type { AuthArtifacts } from '../../core/auth.js'
 
-function storePath(): string {
-  return join(app.getPath('userData'), 'auth.bin')
+const KEY = 'auth'
+
+function pathFor(key: string): string {
+  return join(app.getPath('userData'), `${key}.bin`)
 }
 
-export function saveArtifacts(artifacts: AuthArtifacts): void {
-  if (!safeStorage.isEncryptionAvailable()) {
-    log.warn('auth', 'OS encryption unavailable — not persisting credentials')
-    return
-  }
-  const path = storePath()
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, safeStorage.encryptString(JSON.stringify(artifacts)))
+const store = createSecureStore(
+  (key) => {
+    const path = pathFor(key)
+    return existsSync(path) ? readFileSync(path) : null
+  },
+  (key, value) => {
+    const path = pathFor(key)
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, value)
+  },
+  (key) => {
+    const path = pathFor(key)
+    if (existsSync(path)) unlinkSync(path)
+  },
+)
+
+export async function saveArtifacts(artifacts: AuthArtifacts): Promise<void> {
+  await store.set(KEY, JSON.stringify(artifacts))
   log.info('auth', 'Credentials saved to the system keychain')
 }
 
-export function loadArtifacts(): AuthArtifacts | null {
-  const path = storePath()
-  if (!existsSync(path)) return null
-  if (!safeStorage.isEncryptionAvailable()) return null
+export async function loadArtifacts(): Promise<AuthArtifacts | null> {
+  const raw = await store.get(KEY)
+  if (!raw) return null
   try {
-    const parsed = JSON.parse(safeStorage.decryptString(readFileSync(path)))
-    if (!parsed?.refreshToken || !parsed?.proofKeyPem || !parsed?.deviceId) {
+    const parsed = JSON.parse(raw)
+    if (!parsed?.refreshToken || !parsed?.deviceId) {
       log.warn('auth', 'Stored credentials are incomplete — discarding')
       return null
     }
+
+    // Older builds stored the proof key as a PEM. The key itself is perfectly
+    // good; only the encoding is not portable to other platforms, so convert
+    // it rather than making the user sign in again.
+    if (!parsed.proofKeyJwk && typeof parsed.proofKeyPem === 'string') {
+      try {
+        const jwk = createPrivateKey(parsed.proofKeyPem).export({ format: 'jwk' })
+        const migrated: AuthArtifacts = {
+          proofKeyJwk: jwk as JsonWebKey,
+          deviceId: parsed.deviceId,
+          refreshToken: parsed.refreshToken,
+        }
+        await saveArtifacts(migrated)
+        log.info('auth', 'Migrated stored proof key from PEM to JWK')
+        return migrated
+      } catch (err) {
+        log.warn('auth', `Could not migrate the stored proof key: ${String(err)}`)
+        return null
+      }
+    }
+
+    if (!parsed.proofKeyJwk) return null
     return parsed as AuthArtifacts
   } catch (err) {
-    // A keychain rotation or a partial write leaves an undecryptable blob.
-    // Treat it as "signed out" rather than wedging every future launch.
     log.warn('auth', `Could not read stored credentials: ${String(err)}`)
     return null
   }
 }
 
-export function clearArtifacts(): void {
-  const path = storePath()
-  if (existsSync(path)) unlinkSync(path)
+export async function clearArtifacts(): Promise<void> {
+  await store.remove(KEY)
   log.info('auth', 'Stored credentials cleared')
 }

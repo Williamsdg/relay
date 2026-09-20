@@ -8,7 +8,7 @@
  */
 import { BrowserWindow } from 'electron'
 import { log } from '../logger.js'
-import { REDIRECT_URI } from './flow.js'
+import { REDIRECT_URI } from '../../core/auth.js'
 
 export class SignInCancelled extends Error {
   constructor() {
