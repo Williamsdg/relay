@@ -44,6 +44,9 @@ interface State {
 
 const state: State = { artifacts: null, xsts: null, streaming: null, handle: null }
 
+/** Guards against overlapping interactive sign-ins. */
+let signInInFlight = false
+
 function authState(): AuthState {
   if (!state.xsts) return { status: 'signed-out' }
   return { status: 'signed-in', gamertag: state.xsts.gamertag, xuid: state.xsts.xuid }
@@ -99,6 +102,14 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   })
 
   ipcMain.handle('auth:signIn', async (): Promise<AuthState> => {
+    // A second sign-in while one is already in flight would strand an orphan
+    // login window and a half-finished token chain.
+    if (signInInFlight) {
+      log.warn('auth', 'Sign-in already in progress — ignoring duplicate request')
+      return { status: 'signing-in', step: 'Waiting for Microsoft sign-in' }
+    }
+    signInInFlight = true
+    log.info('auth', 'Sign-in requested from the UI')
     try {
       const { key, deviceId } = newIdentity()
       const pkce = createPkce()
@@ -123,6 +134,8 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
       const message = err instanceof Error ? err.message : String(err)
       log.error('auth', message)
       return { status: 'error', message }
+    } finally {
+      signInInFlight = false
     }
   })
 
