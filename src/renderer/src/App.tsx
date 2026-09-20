@@ -180,7 +180,16 @@ export default function App() {
       <main className="content">{body}</main>
 
       {showDiagnostics && (
-        <Diagnostics logs={logs} onClose={() => setShowDiagnostics(false)} />
+        <Diagnostics
+          logs={logs}
+          onClose={() => setShowDiagnostics(false)}
+          onSimulateDrop={
+            streaming ? () => connection.current?.simulateDrop() : undefined
+          }
+          onSimulateStall={
+            streaming ? () => connection.current?.simulateStall() : undefined
+          }
+        />
       )}
     </div>
   )

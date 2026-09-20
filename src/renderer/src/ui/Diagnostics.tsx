@@ -5,7 +5,18 @@ import type { LogLine } from '../../../shared/types.js'
  * The connection log, verbatim. When a connect fails this is the difference
  * between "it didn't work" and knowing which call returned what.
  */
-export function Diagnostics({ logs, onClose }: { logs: LogLine[]; onClose: () => void }) {
+export function Diagnostics({
+  logs,
+  onClose,
+  onSimulateDrop,
+  onSimulateStall,
+}: {
+  logs: LogLine[]
+  onClose: () => void
+  /** Present only while streaming — recovery cannot be tested when idle. */
+  onSimulateDrop?: () => void
+  onSimulateStall?: () => void
+}) {
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -31,6 +42,22 @@ export function Diagnostics({ logs, onClose }: { logs: LogLine[]; onClose: () =>
           Close
         </button>
       </div>
+      {(onSimulateDrop || onSimulateStall) && (
+        <div className="test-actions">
+          <span className="muted small">Test recovery</span>
+          <button className="ghost" onClick={onSimulateDrop} title="Close the transport for real">
+            Drop connection
+          </button>
+          <button
+            className="ghost"
+            onClick={onSimulateStall}
+            title="Freeze decoded-frame progress so the watchdog fires"
+          >
+            Freeze picture
+          </button>
+        </div>
+      )}
+
       <div className="log">
         {logs.map((line, i) => (
           <div key={i} className={`log-line ${line.level}`}>

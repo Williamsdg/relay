@@ -15,6 +15,12 @@
  */
 import type { StreamSettings, StreamStatus, StreamPhase } from '../../../shared/types.js'
 import { classifyError } from '../../../shared/errors.js'
+import {
+  canRetry,
+  hasStalled,
+  reconnectDelayMs,
+  MAX_RECONNECT_ATTEMPTS,
+} from '../../../shared/recovery.js'
 import { encodeClientMetadata, encodeGamepadFrames } from './packet.js'
 import { collectFrames, describeFrame, isNeutral } from './gamepad.js'
 import { virtualPad } from './virtualPad.js'
@@ -95,6 +101,7 @@ export class ConnectionManager {
   private detachGamepads: (() => void) | null = null
   private gamepadSyncTimer: number | null = null
   private lastInput = 'neutral'
+  private simulatingStall = false
   /** Slots we have told the console about, so we announce each exactly once. */
   private announcedSlots = new Set<number>([0])
   private channels = new Map<string, RTCDataChannel>()
@@ -423,6 +430,32 @@ export class ConnectionManager {
     }, 600)
   }
 
+  /**
+   * Abruptly drop the transport, as a network failure would.
+   *
+   * This is a genuine failure rather than a mocked one: the peer connection is
+   * really closed, so the whole recovery path runs for real.
+   */
+  simulateDrop(): void {
+    window.relay.log.write('warn', 'test', 'simulating a transport drop')
+    this.pc?.close()
+    this.handleDrop('Simulated transport drop')
+  }
+
+  /**
+   * Stop counting decoded frames, reproducing the failure where WebRTC still
+   * reports "connected" while the picture has frozen. The transport really is
+   * still up, so this exercises the watchdog rather than the drop path.
+   */
+  simulateStall(): void {
+    window.relay.log.write(
+      'warn',
+      'test',
+      `simulating a stall; the watchdog should fire in ${this.settings.stallTimeoutSeconds}s`,
+    )
+    this.simulatingStall = true
+  }
+
   /** Ask for a fresh keyframe — useful after a stall or reconnect. */
   requestKeyframe(): void {
     this.sendControl({ message: 'videoKeyframeRequested', ifrRequested: true })
@@ -542,7 +575,7 @@ export class ConnectionManager {
             next.resolution = `${entry.frameWidth}×${entry.frameHeight}`
           }
 
-          if (framesDecoded > this.lastFramesDecoded) {
+          if (framesDecoded > this.lastFramesDecoded && !this.simulatingStall) {
             this.lastFramesDecoded = framesDecoded
             this.lastFrameProgressAt = now
           }
@@ -564,11 +597,9 @@ export class ConnectionManager {
       this.stats = next
       this.cb.onStats(next)
 
-      const stallMs = this.settings.stallTimeoutSeconds * 1000
       if (
-        stallMs > 0 &&
         this.phase === 'streaming' &&
-        now - this.lastFrameProgressAt > stallMs
+        hasStalled(now - this.lastFrameProgressAt, this.settings.stallTimeoutSeconds)
       ) {
         this.handleDrop(
           `No video for ${this.settings.stallTimeoutSeconds}s (the stream stalled)`,
@@ -591,20 +622,20 @@ export class ConnectionManager {
 
     this.teardownPeer()
 
-    if (!this.settings.autoReconnect) {
-      this.setPhase('failed', 'Connection lost', reason)
-      return
-    }
-    if (this.reconnects >= 5) {
-      this.setPhase('failed', 'Connection lost', `${reason} — gave up after 5 attempts`)
+    if (!canRetry(this.reconnects, this.settings.autoReconnect)) {
+      const suffix = this.settings.autoReconnect
+        ? ` — gave up after ${MAX_RECONNECT_ATTEMPTS} attempts`
+        : ''
+      this.setPhase('failed', 'Connection lost', `${reason}${suffix}`)
       return
     }
 
     this.reconnects += 1
-    const backoff = Math.min(8000, 1000 * 2 ** (this.reconnects - 1))
+    const backoff = reconnectDelayMs(this.reconnects)
     this.setPhase(
       'reconnecting',
-      `${reason}. Reconnecting in ${Math.round(backoff / 1000)}s (attempt ${this.reconnects}/5)`,
+      `${reason}. Reconnecting in ${Math.round(backoff / 1000)}s ` +
+        `(attempt ${this.reconnects}/${MAX_RECONNECT_ATTEMPTS})`,
     )
 
     window.setTimeout(() => {
@@ -649,6 +680,7 @@ export class ConnectionManager {
       this.media = null
     }
 
+    this.simulatingStall = false
     this.lastFramesDecoded = 0
     this.lastStatsAt = 0
     this.lastBytesReceived = 0

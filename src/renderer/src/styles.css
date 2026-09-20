@@ -315,3 +315,13 @@ button.ghost[aria-pressed='true'] { border-color: var(--accent); color: var(--ac
   border-radius: 8px;
   padding: 7px 9px;
 }
+
+.test-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
