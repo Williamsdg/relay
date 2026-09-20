@@ -171,7 +171,10 @@ export function createXhome(http: HttpApi, log: Logger) {
             enableTextToSpeech: false,
             highContrast: 0,
             locale: 'en-US',
-            useIceConnection: true,
+            // Must stay false: the console rejects StartStreamingSessionV2
+            // outright when this claims ICE. The direct address the service
+            // returns in serverDetails is the intended path instead.
+            useIceConnection: false,
             timezoneOffsetMinutes: -new Date().getTimezoneOffset(),
             sdkType: 'web',
             osName: 'windows',

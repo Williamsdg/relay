@@ -14,7 +14,11 @@ export interface SessionStartResult {
   handle: SessionHandle
   config: {
     keepAlivePulseInSeconds?: number
-    serverDetails?: { stunServerAddress?: string | null }
+    serverDetails?: {
+      ipAddress?: string
+      port?: number
+      stunServerAddress?: string | null
+    }
   }
 }
 

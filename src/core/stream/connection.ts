@@ -392,6 +392,17 @@ export class ConnectionManager {
           ([...localTypes].map(([t, n]) => `${t}×${n}`).join(' ') || 'none'),
       )
       const remote = await this.backend.exchangeIce(localCandidates)
+
+      // The service reports the console's own address in serverDetails, and
+      // with useIceConnection disabled that is the path it expects us to take.
+      // It does not always appear among the exchanged candidates, so offer it
+      // explicitly rather than hoping ICE discovers it.
+      const details = config.serverDetails
+      if (details?.ipAddress && details.port) {
+        const direct = `candidate:1 1 UDP 2130706431 ${details.ipAddress} ${details.port} typ host`
+        log(`adding the console's direct address ${details.ipAddress}:${details.port}`)
+        remote.push({ candidate: direct, sdpMid: '0', sdpMLineIndex: 0 })
+      }
       for (const candidate of remote) {
         try {
           await pc.addIceCandidate({
