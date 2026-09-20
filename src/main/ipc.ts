@@ -8,6 +8,7 @@
 import { ipcMain, dialog, type BrowserWindow } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { log } from './logger.js'
+import { loadSettings, saveSettings, type PersistedState } from './settings.js'
 import {
   acquireStreamingToken,
   acquireWebToken,
@@ -107,6 +108,9 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   })
 
   ipcMain.handle('auth:state', () => authState())
+
+  ipcMain.handle('settings:get', () => loadSettings())
+  ipcMain.handle('settings:set', (_e, next: Partial<PersistedState>) => saveSettings(next))
 
   /** Silent restore on launch. Returns the resulting state either way. */
   ipcMain.handle('auth:restore', async (): Promise<AuthState> => {

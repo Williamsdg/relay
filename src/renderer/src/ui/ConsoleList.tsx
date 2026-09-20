@@ -22,6 +22,7 @@ export function ConsoleList({
   onConnect,
   settings,
   onSettingsChange,
+  lastConsoleId,
 }: {
   consoles: XboxConsole[]
   loading: boolean
@@ -30,6 +31,7 @@ export function ConsoleList({
   onConnect: (target: XboxConsole) => void
   settings: StreamSettings
   onSettingsChange: (next: StreamSettings) => void
+  lastConsoleId?: string
 }) {
   return (
     <div className="centered">
@@ -51,7 +53,11 @@ export function ConsoleList({
         )}
 
         <ul className="console-list">
-          {consoles.map((c) => {
+          {[...consoles]
+            .sort((a, b) =>
+              a.serverId === lastConsoleId ? -1 : b.serverId === lastConsoleId ? 1 : 0,
+            )
+            .map((c) => {
             const power = powerLabel(c.powerState)
             const off = c.powerState === 'Off'
             return (
@@ -59,7 +65,10 @@ export function ConsoleList({
                 <div className="console-info">
                   <span className="console-name">{c.name}</span>
                   <span className={`badge ${power.tone}`}>{power.text}</span>
-                  <span className="muted small">{c.consoleType}</span>
+                  <span className="muted small">
+                    {c.consoleType}
+                    {c.serverId === lastConsoleId ? ' · last used' : ''}
+                  </span>
                 </div>
                 <PowerButton target={c} onDone={onRefresh} />
                 <button className="primary" onClick={() => onConnect(c)} disabled={off}>
@@ -69,6 +78,56 @@ export function ConsoleList({
             )
           })}
         </ul>
+
+        <div className="settings-row">
+          <label className="field">
+            <span className="muted small">Stream quality</span>
+            <select
+              value={settings.resolution}
+              onChange={(e) =>
+                onSettingsChange({
+                  ...settings,
+                  resolution: Number(e.target.value) as 720 | 1080 | 1440,
+                })
+              }
+            >
+              <option value={720}>720p — lowest latency</option>
+              <option value={1080}>1080p — balanced</option>
+              <option value={1440}>1440p — sharpest</option>
+            </select>
+          </label>
+          <label className="field">
+            <span className="muted small">Stall timeout</span>
+            <select
+              value={settings.stallTimeoutSeconds}
+              onChange={(e) =>
+                onSettingsChange({
+                  ...settings,
+                  stallTimeoutSeconds: Number(e.target.value),
+                })
+              }
+            >
+              <option value={0}>Off</option>
+              <option value={5}>5 seconds</option>
+              <option value={8}>8 seconds</option>
+              <option value={15}>15 seconds</option>
+            </select>
+          </label>
+        </div>
+
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={settings.autoReconnect}
+            onChange={(e) => onSettingsChange({ ...settings, autoReconnect: e.target.checked })}
+          />
+          <span>
+            Reconnect automatically if the stream drops
+            <span className="muted small block">
+              Recovers from a dropped connection or a stalled picture, up to five attempts.
+            </span>
+          </span>
+        </label>
 
         <label className="toggle">
           <input

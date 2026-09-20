@@ -1,7 +1,7 @@
 {
   "name": "xbox-relay",
   "version": "0.1.0",
-  "description": "Relay — a fast, reliability-first Xbox Remote Play client for macOS",
+  "description": "A reliability-first Xbox Remote Play client for macOS",
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {
@@ -30,5 +30,42 @@
   "allowScripts": {
     "electron@33.4.11": true,
     "esbuild@0.21.5": true
+  },
+  "productName": "Relay",
+  "author": "Dylan Williams",
+  "build": {
+    "appId": "io.williamsdigital.relay",
+    "productName": "Relay",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": false,
+    "mac": {
+      "category": "public.app-category.games",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Relay can send your microphone to the console for party chat."
+      }
+    },
+    "dmg": {
+      "title": "Relay"
+    },
+    "afterPack": "build/after-pack.cjs"
   }
 }

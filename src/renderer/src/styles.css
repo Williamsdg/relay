@@ -304,3 +304,14 @@ button.ghost[aria-pressed='true'] { border-color: var(--accent); color: var(--ac
 }
 .toggle input { margin-top: 2px; accent-color: var(--accent); }
 .block { display: block; }
+
+.settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field select {
+  font: inherit;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+}

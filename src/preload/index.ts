@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { PersistedState } from '../main/settings.js'
 import type {
   AuthState,
   LogLine,
@@ -32,6 +33,11 @@ const api = {
     restore: (): Promise<AuthState> => ipcRenderer.invoke('auth:restore'),
     signIn: (): Promise<AuthState> => ipcRenderer.invoke('auth:signIn'),
     signOut: (): Promise<AuthState> => ipcRenderer.invoke('auth:signOut'),
+  },
+  settings: {
+    get: (): Promise<PersistedState> => ipcRenderer.invoke('settings:get'),
+    set: (next: Partial<PersistedState>): Promise<PersistedState> =>
+      ipcRenderer.invoke('settings:set', next),
   },
   consoles: {
     list: (): Promise<XboxConsole[]> => ipcRenderer.invoke('consoles:list'),

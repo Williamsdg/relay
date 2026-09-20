@@ -26,6 +26,7 @@ export default function App() {
   const [logs, setLogs] = useState<LogLine[]>([])
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [settings, setSettings] = useState<StreamSettings>(DEFAULT_SETTINGS)
+  const [lastConsoleId, setLastConsoleId] = useState<string | undefined>()
 
   const connection = useRef<ConnectionManager | null>(null)
 
@@ -40,6 +41,20 @@ export default function App() {
   // Silent sign-in on launch — a returning user should land on their consoles.
   useEffect(() => {
     void window.relay.auth.restore().then(setAuth)
+  }, [])
+
+  useEffect(() => {
+    void window.relay.settings.get().then((stored) => {
+      const { lastConsoleId: last, ...rest } = stored
+      setSettings(rest)
+      setLastConsoleId(last)
+    })
+  }, [])
+
+  // Persist whenever the user changes something, so nothing resets on relaunch.
+  const updateSettings = useCallback((next: StreamSettings) => {
+    setSettings(next)
+    void window.relay.settings.set(next)
   }, [])
 
   const loadConsoles = useCallback(async () => {
@@ -60,6 +75,8 @@ export default function App() {
 
   const connect = useCallback(
     async (target: XboxConsole) => {
+      setLastConsoleId(target.serverId)
+      void window.relay.settings.set({ lastConsoleId: target.serverId })
       const manager = new ConnectionManager(settings, {
         onStatus: setStatus,
         onStats: setStats,
@@ -114,7 +131,8 @@ export default function App() {
           onRefresh={loadConsoles}
           onConnect={connect}
           settings={settings}
-          onSettingsChange={setSettings}
+          onSettingsChange={updateSettings}
+          lastConsoleId={lastConsoleId}
         />
       )
     }
@@ -133,6 +151,8 @@ export default function App() {
     connect,
     signIn,
     settings,
+    updateSettings,
+    lastConsoleId,
   ])
 
   return (
