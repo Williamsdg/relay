@@ -101,6 +101,7 @@ export default function App() {
           status={status}
           stats={stats}
           onDisconnect={disconnect}
+          onReconnectController={() => connection.current?.reconnectController()}
         />
       )
     }

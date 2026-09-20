@@ -20,11 +20,13 @@ export function Stream({
   status,
   stats,
   onDisconnect,
+  onReconnectController,
 }: {
   stream: MediaStream | null
   status: StreamStatus
   stats: StreamStats | null
   onDisconnect: () => void
+  onReconnectController: () => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [showHud, setShowHud] = useState(false)
@@ -167,6 +169,14 @@ export function Stream({
         <button className="ghost" onClick={toggleMute} aria-pressed={muted} disabled={!live}>
           {muted ? 'Unmute' : 'Mute'}
         </button>
+        <button
+          className="ghost"
+          onClick={onReconnectController}
+          disabled={!live}
+          title="Re-present the controller — use when a game ignores input"
+        >
+          Re-pair
+        </button>
         <button className="ghost" onClick={screenshot} disabled={!live}>
           Shot
         </button>
@@ -199,6 +209,7 @@ export function Stream({
           <Row label="Packets lost" value={String(stats.packetsLost)} />
           <Row label="Reconnects" value={String(status.reconnects)} />
           <Row label="Input" value={stats.input} />
+          <Row label="Controllers" value={stats.controllers} />
         </div>
       )}
     </div>

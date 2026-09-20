@@ -22,6 +22,8 @@ import { virtualPad } from './virtualPad.js'
 export interface StreamStats {
   /** What the app currently believes is pressed — makes a stuck input visible. */
   input: string
+  /** Which physical controllers the browser can currently see. */
+  controllers: string
   fps: number
   bitrateKbps: number
   rttMs: number
@@ -34,6 +36,7 @@ export interface StreamStats {
 
 const EMPTY_STATS: StreamStats = {
   input: 'neutral',
+  controllers: 'none detected',
   fps: 0,
   bitrateKbps: 0,
   rttMs: 0,
@@ -92,6 +95,8 @@ export class ConnectionManager {
   private detachGamepads: (() => void) | null = null
   private gamepadSyncTimer: number | null = null
   private lastInput = 'neutral'
+  /** Slots we have told the console about, so we announce each exactly once. */
+  private announcedSlots = new Set<number>([0])
   private channels = new Map<string, RTCDataChannel>()
   private inputTimer: number | null = null
   private keepaliveTimer: number | null = null
@@ -144,7 +149,10 @@ export class ConnectionManager {
       )
       // Slot 0 is announced by the control handshake; extra pads need their
       // own announcement or the console will not register them.
-      if (event.gamepad.index > 0) this.announceGamepad(event.gamepad.index, true)
+      if (event.gamepad.index > 0 && !this.announcedSlots.has(event.gamepad.index)) {
+        this.announcedSlots.add(event.gamepad.index)
+        this.announceGamepad(event.gamepad.index, true)
+      }
       if (event.gamepad.mapping !== 'standard') {
         window.relay.log.write(
           'warn',
@@ -155,7 +163,10 @@ export class ConnectionManager {
     }
     const onDisconnect = (event: GamepadEvent) => {
       log(`controller disconnected from slot ${event.gamepad.index}`)
-      if (event.gamepad.index > 0) this.announceGamepad(event.gamepad.index, false)
+      if (event.gamepad.index > 0) {
+        this.announcedSlots.delete(event.gamepad.index)
+        this.announceGamepad(event.gamepad.index, false)
+      }
     }
     window.addEventListener('gamepadconnected', onConnect)
     window.addEventListener('gamepaddisconnected', onDisconnect)
@@ -265,6 +276,11 @@ export class ConnectionManager {
         )
       }
 
+      // Input starts as soon as its channel opens, before the control
+      // handshake announces the gamepad. The order matters: the console binds
+      // a controller to a running game using the input stream that is already
+      // flowing, so announcing first and sending afterwards leaves games
+      // ignoring the pad even though system UI still accepts it.
       this.channels.get('input')?.addEventListener('open', () => this.startInputLoop())
       this.channels.get('control')?.addEventListener('open', () => this.startControlChannel())
       this.channels.get('control')?.addEventListener('message', (event) => {
@@ -390,9 +406,50 @@ export class ConnectionManager {
     this.sendControl({ message: 'gamepadChanged', gamepadIndex, wasAdded })
   }
 
+  /**
+   * Re-present the controller to the console.
+   *
+   * A game that was already running when the stream started can end up never
+   * binding the streamed pad. Removing and re-adding it makes the console
+   * hand the game a fresh controller-connected event, which is the same thing
+   * that happens when you turn a real controller off and on again.
+   */
+  reconnectController(): void {
+    log('re-announcing controller')
+    for (const slot of this.announcedSlots) this.announceGamepad(slot, false)
+    window.setTimeout(() => {
+      for (const slot of this.announcedSlots) this.announceGamepad(slot, true)
+      log('controller re-announced')
+    }, 600)
+  }
+
   /** Ask for a fresh keyframe — useful after a stall or reconnect. */
   requestKeyframe(): void {
     this.sendControl({ message: 'videoKeyframeRequested', ifrRequested: true })
+  }
+
+  /**
+   * Detect controllers by polling as well as by event.
+   *
+   * `gamepadconnected` only fires once, and only after the page has seen a
+   * button press — a controller plugged in before the stream started, or one
+   * whose event we missed, would otherwise stay invisible forever even though
+   * `getGamepads()` can see it.
+   */
+  private pollControllers(): string {
+    const pads = (navigator.getGamepads?.() ?? []).filter(
+      (p): p is Gamepad => p !== null && p.connected,
+    )
+    if (pads.length === 0) return 'none detected — press a button on one'
+
+    for (const pad of pads) {
+      if (this.announcedSlots.has(pad.index)) continue
+      this.announcedSlots.add(pad.index)
+      this.announceGamepad(pad.index, true)
+      log(`controller found by polling in slot ${pad.index}: ${pad.id}`)
+    }
+
+    return pads.map((p) => `${p.index}: ${p.id.slice(0, 40)}`).join(', ')
   }
 
   /** Push gamepad state at a fixed rate while the input channel is open. */
@@ -502,6 +559,7 @@ export class ConnectionManager {
       })
 
       next.input = this.lastInput
+      next.controllers = this.pollControllers()
       this.lastStatsAt = now
       this.stats = next
       this.cb.onStats(next)
@@ -560,6 +618,7 @@ export class ConnectionManager {
       if (timer !== null) window.clearInterval(timer)
     }
     this.inputTimer = this.keepaliveTimer = this.statsTimer = null
+    this.announcedSlots = new Set([0])
     if (this.gamepadSyncTimer !== null) {
       window.clearTimeout(this.gamepadSyncTimer)
       this.gamepadSyncTimer = null
