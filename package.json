@@ -2,7 +2,7 @@
   "name": "xbox-relay",
   "version": "0.1.0",
   "description": "A reliability-first Xbox Remote Play client for macOS",
-  "main": "out/main/index.js",
+  "main": "out/main/index.cjs",
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
@@ -44,7 +44,6 @@
       "out/**/*",
       "package.json"
     ],
-    "asar": false,
     "mac": {
       "category": "public.app-category.games",
       "icon": "build/icon.icns",

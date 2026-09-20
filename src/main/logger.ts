@@ -22,11 +22,13 @@ const sinks = new Set<Sink>()
  * lazily because `app.getPath` is unavailable until Electron is ready.
  */
 let logFile: string | null = null
-let logFileChecked = false
 
 function currentLogFile(): string | null {
-  if (logFileChecked) return logFile
-  logFileChecked = true
+  if (logFile) return logFile
+  // `app.getPath` throws before Electron is ready, and early lines are logged
+  // during startup. Caching that failure would disable the file log for the
+  // whole session, so keep retrying until the path is actually available.
+  if (!app.isReady()) return null
   try {
     const dir = join(app.getPath('userData'), 'logs')
     mkdirSync(dir, { recursive: true })

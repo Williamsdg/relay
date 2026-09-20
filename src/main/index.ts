@@ -1,10 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { registerIpc, teardown } from './ipc.js'
 import { log } from './logger.js'
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
 
 let mainWindow: BrowserWindow | null = null
 
@@ -18,7 +15,7 @@ function createWindow(): void {
     backgroundColor: '#0b0f0c',
     titleBarStyle: 'hiddenInset',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
+      preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       // The preload is an ES module; Electron only loads those unsandboxed.
