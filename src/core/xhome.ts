@@ -171,7 +171,7 @@ export function createXhome(http: HttpApi, log: Logger) {
             enableTextToSpeech: false,
             highContrast: 0,
             locale: 'en-US',
-            useIceConnection: false,
+            useIceConnection: true,
             timezoneOffsetMinutes: -new Date().getTimezoneOffset(),
             sdkType: 'web',
             osName: 'windows',
@@ -241,10 +241,18 @@ export function createXhome(http: HttpApi, log: Logger) {
     session: StreamingSession,
     handle: SessionHandle,
   ): Promise<SessionConfiguration> {
-    return http.requestJson<SessionConfiguration>(sessionUrl(handle, '/configuration'), {
-      headers: authHeaders(session),
-      scope: 'xhome',
-    })
+    const config = await http.requestJson<SessionConfiguration>(
+      sessionUrl(handle, '/configuration'),
+      { headers: authHeaders(session), scope: 'xhome' },
+    )
+    const d = config.serverDetails
+    log(
+      'info',
+      'xhome',
+      `Server details: address=${d?.ipAddress ?? 'none'}:${d?.port ?? '?'} ` +
+        `stun=${d?.stunServerAddress ?? 'none offered'}`,
+    )
+    return config
   }
 
   /**
@@ -357,10 +365,17 @@ export function createXhome(http: HttpApi, log: Logger) {
               : Number(c.sdpMLineIndex),
         }),
       )
+    const types = new Map<string, number>()
+    for (const c of remote) {
+      const m = /\btyp\s+(\w+)/.exec(c.candidate)
+      const t = m ? m[1] : 'unknown'
+      types.set(t, (types.get(t) ?? 0) + 1)
+    }
     log(
       'info',
       'webrtc',
-      `Received ${remote.length} usable remote ICE candidate(s)` +
+      `Received ${remote.length} usable remote ICE candidate(s): ` +
+        ([...types].map(([t, n]) => `${t}\u00d7${n}`).join(' ') || 'none') +
         (skipped ? ` (${skipped} malformed skipped)` : ''),
     )
     return remote

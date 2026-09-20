@@ -9,7 +9,7 @@
  * held direction ramps toward full deflection instead of snapping, which makes
  * menus and camera movement far less twitchy than a raw on/off axis.
  */
-import { virtualPad, type PadAxis, type PadButton } from './virtualPad.js'
+import { virtualPad, type PadAxis, type PadButton } from '../../../core/stream/virtualPad.js'
 
 /** Either a button press or a push along one axis. */
 export type Binding =

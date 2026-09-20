@@ -7,7 +7,8 @@ import type {
   StreamSettings,
 } from '../../shared/types.js'
 import { DEFAULT_SETTINGS } from '../../shared/types.js'
-import { ConnectionManager, type StreamStats } from './stream/connection.js'
+import { ConnectionManager, type StreamStats } from '../../core/stream/connection.js'
+import { desktopBackend } from './desktopBackend.js'
 import { SignIn } from './ui/SignIn.js'
 import { ConsoleList } from './ui/ConsoleList.js'
 import { Stream } from './ui/Stream.js'
@@ -77,7 +78,7 @@ export default function App() {
     async (target: XboxConsole) => {
       setLastConsoleId(target.serverId)
       void window.relay.settings.set({ lastConsoleId: target.serverId })
-      const manager = new ConnectionManager(settings, {
+      const manager = new ConnectionManager(settings, desktopBackend, {
         onStatus: setStatus,
         onStats: setStats,
         onStream: setStream,

@@ -13,14 +13,15 @@
  *  - reconnects are automatic and bounded, tearing the session fully down and
  *    re-provisioning rather than trying to revive a dead peer connection.
  */
-import type { StreamSettings, StreamStatus, StreamPhase } from '../../../shared/types.js'
-import { classifyError } from '../../../shared/errors.js'
+import type { StreamSettings, StreamStatus, StreamPhase } from '../../shared/types.js'
+import type { LogLevel } from '../ports.js'
+import { classifyError } from '../../shared/errors.js'
 import {
   canRetry,
   hasStalled,
   reconnectDelayMs,
   MAX_RECONNECT_ATTEMPTS,
-} from '../../../shared/recovery.js'
+} from '../../shared/recovery.js'
 import { encodeClientMetadata, encodeGamepadFrames } from './packet.js'
 import { collectFrames, describeFrame, isNeutral } from './gamepad.js'
 import { virtualPad } from './virtualPad.js'
@@ -102,9 +103,25 @@ function decodeChannelMessage(data: unknown): string {
   return String(data)
 }
 
-/** Renderer-side events go to the same diagnostics log as the REST calls. */
+/**
+ * Client-side events go to the same diagnostics log as the REST calls.
+ * The sink is installed when a ConnectionManager is constructed, so this
+ * module stays free of any platform-specific logging channel.
+ */
+type LogSink = (level: LogLevel, scope: string, message: string) => void
+
+let logSink: LogSink = () => {}
+
+export function setLogSink(sink: LogSink): void {
+  logSink = sink
+}
+
+function writeLog(level: LogLevel, scope: string, message: string): void {
+  logSink(level, scope, message)
+}
+
 function log(message: string): void {
-  window.relay.log.write('info', 'webrtc', message)
+  logSink('info', 'webrtc', message)
 }
 
 const RESOLUTIONS: Record<number, { width: number; height: number }> = {
@@ -112,6 +129,8 @@ const RESOLUTIONS: Record<number, { width: number; height: number }> = {
   1080: { width: 1920, height: 1080 },
   1440: { width: 2560, height: 1440 },
 }
+
+import type { StreamBackend } from './backend.js'
 
 export interface ConnectionCallbacks {
   onStatus: (status: StreamStatus) => void
@@ -148,8 +167,13 @@ export class ConnectionManager {
 
   constructor(
     private readonly settings: StreamSettings,
+    private readonly backend: StreamBackend,
     private readonly cb: ConnectionCallbacks,
-  ) {}
+  ) {
+    // The module-level helper needs somewhere to send lines; the backend is
+    // only available per instance, so hand it over on construction.
+    setLogSink((level, scope, message) => backend.log(level, scope, message))
+  }
 
   private setPhase(phase: StreamPhase, detail: string, error?: string) {
     this.phase = phase
@@ -185,7 +209,7 @@ export class ConnectionManager {
         this.announceGamepad(event.gamepad.index, true)
       }
       if (event.gamepad.mapping !== 'standard') {
-        window.relay.log.write(
+        writeLog(
           'warn',
           'input',
           'This controller does not use the standard mapping, so buttons may be wrong.',
@@ -224,10 +248,10 @@ export class ConnectionManager {
         // Informational: the streaming service performs its own wake during
         // provisioning, so a console that does not report On is still worth
         // attempting rather than refusing outright.
-        const awake = await window.relay.consoles.ensureOn(this.serverId)
+        const awake = await this.backend.ensureConsoleOn(this.serverId)
         if (this.stopped) return
         if (!awake) {
-          window.relay.log.write(
+          writeLog(
             'warn',
             'xccs',
             'Console did not confirm it is on; continuing anyway',
@@ -236,7 +260,7 @@ export class ConnectionManager {
       }
 
       this.setPhase('requesting-session', 'Asking Xbox for a streaming session')
-      const { handle, config } = await window.relay.session.start({
+      const { handle, config } = await this.backend.startSession({
         serverId: this.serverId,
         width,
         height,
@@ -263,7 +287,7 @@ export class ConnectionManager {
         log(`ICE connection state: ${pc.iceConnectionState}`)
         if (pc.iceConnectionState === 'failed') {
           const summary = [...localTypes].map(([t, n]) => `${t}×${n}`).join(' ') || 'none'
-          window.relay.log.write(
+          writeLog(
             'error',
             'webrtc',
             `ICE failed. Local candidates were: ${summary}. ` +
@@ -323,7 +347,7 @@ export class ConnectionManager {
         channel.addEventListener('open', () => log(`data channel "${name}" open`))
         channel.addEventListener('close', () => log(`data channel "${name}" closed`))
         channel.addEventListener('error', (event) =>
-          window.relay.log.write('error', 'webrtc', `data channel "${name}" error: ${String(event)}`),
+          writeLog('error', 'webrtc', `data channel "${name}" error: ${String(event)}`),
         )
       }
 
@@ -357,7 +381,7 @@ export class ConnectionManager {
       })
       await pc.setLocalDescription(offer)
 
-      const answer = await window.relay.session.sdp(offer.sdp ?? '')
+      const answer = await this.backend.exchangeSdp(offer.sdp ?? '')
       await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp })
 
       this.setPhase('connecting', 'Exchanging network routes')
@@ -367,7 +391,7 @@ export class ConnectionManager {
         `local ICE candidates: ` +
           ([...localTypes].map(([t, n]) => `${t}×${n}`).join(' ') || 'none'),
       )
-      const remote = await window.relay.session.ice(localCandidates)
+      const remote = await this.backend.exchangeIce(localCandidates)
       for (const candidate of remote) {
         try {
           await pc.addIceCandidate({
@@ -485,7 +509,7 @@ export class ConnectionManager {
    * really closed, so the whole recovery path runs for real.
    */
   simulateDrop(): void {
-    window.relay.log.write('warn', 'test', 'simulating a transport drop')
+    writeLog('warn', 'test', 'simulating a transport drop')
     this.pc?.close()
     this.handleDrop('Simulated transport drop')
   }
@@ -496,7 +520,7 @@ export class ConnectionManager {
    * still up, so this exercises the watchdog rather than the drop path.
    */
   simulateStall(): void {
-    window.relay.log.write(
+    writeLog(
       'warn',
       'test',
       `simulating a stall; the watchdog should fire in ${this.settings.stallTimeoutSeconds}s`,
@@ -574,7 +598,7 @@ export class ConnectionManager {
       } catch (err) {
         // Buffer full or channel closing; the next tick recovers.
         if (sentCount < 3) {
-          window.relay.log.write('warn', 'input', `send failed: ${String(err)}`)
+          writeLog('warn', 'input', `send failed: ${String(err)}`)
         }
       }
     }, intervalMs)
@@ -584,7 +608,7 @@ export class ConnectionManager {
   private startKeepalive(pulseSeconds: number): void {
     const intervalMs = Math.max(30, pulseSeconds / 2) * 1000
     this.keepaliveTimer = window.setInterval(() => {
-      window.relay.session.keepalive().catch((err) => {
+      this.backend.keepalive().catch((err) => {
         console.warn('Keepalive failed', err)
       })
     }, intervalMs)
@@ -747,7 +771,7 @@ export class ConnectionManager {
     this.detachGamepads = null
     virtualPad.reset()
     this.teardownPeer()
-    await window.relay.session.stop().catch(() => undefined)
+    await this.backend.stopSession().catch(() => undefined)
     this.setPhase('stopped', 'Disconnected')
   }
 }

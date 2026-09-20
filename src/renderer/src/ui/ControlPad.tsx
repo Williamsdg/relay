@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { virtualPad, type PadButton } from '../stream/virtualPad.js'
+import { virtualPad, type PadButton } from '../../../core/stream/virtualPad.js'
 
 /**
  * On-screen controller buttons.

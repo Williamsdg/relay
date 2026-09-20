@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { StreamStatus } from '../../../shared/types.js'
-import type { StreamStats } from '../stream/connection.js'
+import type { StreamStats } from '../../../core/stream/connection.js'
 import { attachKeyboard, DEFAULT_KEYBOARD_OPTIONS } from '../stream/keyboard.js'
-import { virtualPad } from '../stream/virtualPad.js'
+import { virtualPad } from '../../../core/stream/virtualPad.js'
 import { ControlPad } from './ControlPad.js'
 
 /** Phases where we are still working toward a picture. */
