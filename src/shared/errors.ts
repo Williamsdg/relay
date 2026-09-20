@@ -36,11 +36,12 @@ export function classifyError(input: string): ClassifiedError {
     return {
       title: 'Your Xbox hasn’t registered for streaming',
       guidance:
-        'Xbox accepted the request but could not reach the console — it has not registered with ' +
-        'the streaming service. Standby alone is not enough. Wake the console fully (press the ' +
-        'Xbox button), confirm Settings → Devices & connections → Remote features → “Enable ' +
-        'remote features” is checked, leave it on the dashboard for a minute so it registers, ' +
-        'then try again.',
+        'The push that starts a stream never reached the console, even though Xbox Live shows it ' +
+        'online. That almost always means remote features are off. On the console: Settings → ' +
+        'Devices & connections → Remote features → check “Enable remote features”, and under Xbox ' +
+        'app preferences allow connections from this account. Also confirm your profile is signed ' +
+        'in on the console. If the official Xbox app cannot connect either, the problem is on the ' +
+        'console rather than here.',
       retryable: false,
       raw,
     }
