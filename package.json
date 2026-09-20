@@ -52,13 +52,21 @@
         {
           "target": "dmg",
           "arch": [
-            "arm64"
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
           ]
         }
       ],
-      "identity": null,
-      "hardenedRuntime": false,
+      "identity": "Williams Digital LLC (3FJ5SR5745)",
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Relay can send your microphone to the console for party chat."
       }
@@ -66,6 +74,6 @@
     "dmg": {
       "title": "Relay"
     },
-    "afterPack": "build/after-pack.cjs"
+    "afterSign": "build/notarize.cjs"
   }
 }

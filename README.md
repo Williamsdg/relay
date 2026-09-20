@@ -1,37 +1,80 @@
 # Relay
 
-A reliability-first Xbox Remote Play client for macOS.
+A fast, reliability-first Xbox Remote Play client for macOS.
 
-Relay talks the same protocol the official Xbox app uses to stream your own
-console over the network, using your own Microsoft account. It exists because
-the official client fails quietly: spinners that never resolve, sessions that
-hang on a frozen frame, and re-authentication prompts that appear for no
-visible reason.
+Relay streams your own Xbox to your Mac using the same protocol the official
+Xbox app uses, with your own Microsoft account. It exists because the official
+client fails quietly: spinners that never resolve, sessions that hang on a
+frozen frame, and re-authentication prompts that appear for no visible reason.
+
+![Relay](build/icon-1024.png)
+
+## Install
+
+1. Download the latest `Relay-<version>-universal.dmg` from
+   [Releases](https://github.com/Williamsdg/relay/releases/latest).
+2. Open it and drag **Relay** to your Applications folder.
+3. Launch it and sign in with the Microsoft account your console is registered
+   to.
+
+Universal build — runs on both Apple silicon and Intel Macs, macOS 10.15+.
+
+## Before it will connect
+
+Remote Play has to be enabled on the console itself, and this trips up almost
+everyone:
+
+- On the Xbox: **Settings → Devices & connections → Remote features →
+  Enable remote features**.
+- **Settings → General → Power options → Power mode: Instant-on**, if you want
+  Relay to wake the console for you. A console in energy-saving mode has its
+  network adapter switched off and genuinely cannot be woken remotely.
+- Leave the console on the dashboard for a minute the first time, so it
+  registers with the streaming service. Until it has, Relay will tell you that
+  the console has not registered rather than spinning.
 
 ## What it does differently
 
 **Every connection step is named.** The connect flow is a state machine —
-`requesting-session → provisioning → negotiating → connecting → streaming` —
-and the UI shows which step you are on. A failure reports the step it died on
-and the service's own error text, not "couldn't connect".
+waking → requesting a session → provisioning → negotiating → connecting →
+streaming — and the UI shows which step you are on. A failure reports the step
+it died on and the service's own error text, not "couldn't connect", and it
+does not retry a condition the service has already ruled out.
 
 **It detects stalls that WebRTC reports as healthy.** The classic Remote Play
 hang leaves the peer connection in the `connected` state while the console has
-actually stopped sending frames. Relay watches `framesDecoded` rather than
-connection state, so a stream that stops producing video is caught in seconds
-and reconnected.
+stopped sending frames. Relay watches decoded frame count rather than
+connection state, so a frozen picture is caught in seconds and reconnected.
 
-**Reconnects are automatic and bounded.** Drops tear the session fully down and
-re-provision with exponential backoff, up to five attempts, instead of trying
-to revive a dead peer connection. The attempt count is visible.
+**You sign in once.** Credentials live in the macOS Keychain and later launches
+complete the whole token chain silently.
 
-**You sign in once.** The proof key and MSA refresh token are stored in the
-macOS Keychain via Electron's `safeStorage`. Subsequent launches complete the
-whole token chain silently. A revoked token falls back to the sign-in screen
-rather than presenting a broken session.
+**There is a diagnostics panel.** Every HTTP call, retry, channel event and
+state transition is logged and copyable — including two buttons that
+deliberately break the stream so you can watch it recover.
 
-**There is a diagnostics panel.** Every HTTP call, retry, and state transition
-is logged and copyable, so a failure can be diagnosed instead of guessed at.
+## Controls
+
+- **Physical controller** — connect it to the *Mac*, then press a button:
+  browsers hide a gamepad until they have seen one pressed.
+- **On-screen controller** — including the Xbox button, which is the only way
+  to open the guide without a physical pad.
+- **Keyboard and mouse** — WASD moves, mouse aims under pointer lock, with the
+  bindings shown on screen while it is active.
+- **Re-pair** — if a game was already running when you connected and ignores
+  the pad, this re-presents the controller.
+
+## Known limitations
+
+- macOS only. No Windows or Linux build.
+- Not affiliated with or endorsed by Microsoft. Relay connects to your own
+  console with your own credentials, the same way the official client does; it
+  circumvents no protection and contains no Microsoft code.
+- Party chat, achievements and the Xbox social features are out of scope.
+
+---
+
+# Developing
 
 ## Requirements
 
