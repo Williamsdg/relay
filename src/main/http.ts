@@ -13,8 +13,16 @@ export class HttpError extends Error {
     readonly status: number,
     readonly url: string,
     readonly body: string,
+    /** Xbox often explains a rejection in headers rather than the body. */
+    readonly headers: Record<string, string> = {},
   ) {
-    super(`HTTP ${status} for ${new URL(url).pathname} — ${body.slice(0, 400)}`)
+    const hint =
+      headers['x-err'] || headers['www-authenticate'] || headers['x-xblcorrelationid']
+    super(
+      `HTTP ${status} for ${new URL(url).pathname}` +
+        (body ? ` — ${body.slice(0, 400)}` : '') +
+        (hint ? ` [${hint}]` : ''),
+    )
     this.name = 'HttpError'
   }
 }
@@ -51,7 +59,13 @@ export async function request(url: string, opts: RequestOptions = {}): Promise<R
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
       const res = await fetch(url, { method, headers, body, signal: controller.signal })
-      if (!res.ok) throw new HttpError(res.status, url, await res.text())
+      if (!res.ok) {
+        const headers: Record<string, string> = {}
+        res.headers.forEach((v, k) => {
+          headers[k.toLowerCase()] = v
+        })
+        throw new HttpError(res.status, url, await res.text(), headers)
+      }
       return res
     } catch (err) {
       lastErr = err

@@ -8,13 +8,12 @@
 import { ipcMain, type BrowserWindow } from 'electron'
 import { log } from './logger.js'
 import {
+  acquireStreamingToken,
   completeFromRefreshToken,
   createPkce,
   exchangeCode,
   getDeviceToken,
-  getXstsToken,
   newIdentity,
-  sisuAuthorize,
   startSisuAuth,
   type AuthArtifacts,
   type XstsToken,
@@ -118,8 +117,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
 
       const code = await promptForAuthCode(loginUrl, pkce.state)
       const oauth = await exchangeCode(code, pkce.verifier)
-      const sisu = await sisuAuthorize(key, oauth.access_token, deviceToken)
-      const xsts = await getXstsToken(key, sisu)
+      const xsts = await acquireStreamingToken(key, oauth.access_token, deviceToken)
 
       state.xsts = xsts
       state.artifacts = {

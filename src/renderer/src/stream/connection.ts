@@ -14,6 +14,7 @@
  *    re-provisioning rather than trying to revive a dead peer connection.
  */
 import type { StreamSettings, StreamStatus, StreamPhase } from '../../../shared/types.js'
+import { classifyError } from '../../../shared/errors.js'
 import { encodeClientMetadata, encodeGamepadFrames } from './packet.js'
 import { readGamepads, isNeutral } from './gamepad.js'
 
@@ -184,12 +185,19 @@ export class ConnectionManager {
       this.startKeepalive(config.keepAlivePulseInSeconds ?? handle.keepAlivePulseInSeconds ?? 300)
       this.startStatsLoop()
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
       if (this.stopped) return
+      const classified = classifyError(err instanceof Error ? err.message : String(err))
+      // Retrying something the service has already ruled out just burns the
+      // attempt budget and hides the real problem behind a spinner.
+      if (!classified.retryable) {
+        this.teardownPeer()
+        this.setPhase('failed', classified.title, classified.guidance)
+        return
+      }
       if (this.settings.autoReconnect && this.reconnects < 5) {
-        this.handleDrop(message)
+        this.handleDrop(classified.title)
       } else {
-        this.setPhase('failed', 'Could not connect', message)
+        this.setPhase('failed', 'Could not connect', classified.title)
       }
     }
   }
@@ -325,6 +333,13 @@ export class ConnectionManager {
   private handleDrop(reason: string): void {
     if (this.stopped) return
     if (this.phase === 'reconnecting') return
+
+    const classified = classifyError(reason)
+    if (!classified.retryable) {
+      this.teardownPeer()
+      this.setPhase('failed', classified.title, classified.guidance)
+      return
+    }
 
     this.teardownPeer()
 

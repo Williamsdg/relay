@@ -205,3 +205,15 @@ button.ghost[aria-pressed='true'] { border-color: var(--accent); color: var(--ac
 .log-line { display: flex; flex-direction: column; padding: 3px 0; border-bottom: 1px solid rgba(42, 53, 44, 0.4); }
 .log-line.warn { color: var(--warn); }
 .log-line.error { color: var(--bad); }
+
+/* Actionable guidance on a terminal failure — informative, not alarming. */
+.guidance {
+  color: var(--text);
+  background: rgba(227, 179, 65, 0.08);
+  border: 1px solid rgba(227, 179, 65, 0.3);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+  text-align: left;
+  font-size: 13px;
+}

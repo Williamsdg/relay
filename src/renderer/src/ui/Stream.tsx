@@ -46,9 +46,9 @@ export function Stream({
         <div className="overlay">
           <div className="card">
             {!failed && <div className="spinner" aria-hidden />}
-            <h2>{failed ? 'Connection failed' : status.detail || 'Connecting'}</h2>
+            <h2>{status.detail || (failed ? 'Connection failed' : 'Connecting')}</h2>
             {!failed && <p className="muted small">{phaseLabel(status.phase)}</p>}
-            {status.error && <p className="error">{status.error}</p>}
+            {status.error && <p className={failed ? 'guidance' : 'error'}>{status.error}</p>}
             {status.reconnects > 0 && !failed && (
               <p className="muted small">Reconnect attempt {status.reconnects} of 5</p>
             )}

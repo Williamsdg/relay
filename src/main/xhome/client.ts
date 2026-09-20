@@ -117,7 +117,11 @@ export async function listConsoles(session: StreamingSession): Promise<XboxConso
           isLocal: s.isLocal,
         }),
       )
-      log.info('xhome', `Found ${consoles.length} console(s) via ${path}`)
+      log.info(
+        'xhome',
+        `Found ${consoles.length} console(s) via ${path}: ` +
+          consoles.map((c) => `${c.name} [${c.consoleType}] power=${c.powerState}`).join('; '),
+      )
       return consoles
     } catch (err) {
       lastErr = err

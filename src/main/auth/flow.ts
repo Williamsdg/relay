@@ -59,11 +59,44 @@ interface XblTokenResponse {
   DisplayClaims?: { xui?: Array<Record<string, string>> }
 }
 
+/**
+ * SISU is inconsistent about token shapes: some fields come back as a bare
+ * JWT string, others as an object wrapping one. Treat every field as either.
+ */
+type MaybeWrappedToken = string | { Token?: string } | undefined
+
 interface SisuAuthorizeResponse {
-  DeviceToken: string
-  TitleToken: XblTokenResponse
-  UserToken: XblTokenResponse
-  AuthorizationToken: XblTokenResponse
+  DeviceToken: MaybeWrappedToken
+  TitleToken: MaybeWrappedToken
+  UserToken: MaybeWrappedToken
+  AuthorizationToken: MaybeWrappedToken
+}
+
+/**
+ * Pull the JWT out of whichever shape arrived.
+ *
+ * This matters more than it looks: reading `.Token` off a string yields
+ * undefined, JSON.stringify then drops the field entirely, and the service
+ * rejects the request with a bare 400 that names nothing.
+ */
+function tokenValue(value: MaybeWrappedToken, field: string): string {
+  const token = typeof value === 'string' ? value : value?.Token
+  if (!token) throw new Error(`SISU returned no usable ${field}`)
+  return token
+}
+
+/** Describe a response's shape for the log without leaking token material. */
+function describeShape(res: Record<string, unknown>): string {
+  return Object.entries(res)
+    .map(([k, v]) => {
+      if (typeof v === 'string') return `${k}:string(${v.length})`
+      if (v && typeof v === 'object') {
+        const inner = v as Record<string, unknown>
+        return `${k}:object{${Object.keys(inner).join(',')}}`
+      }
+      return `${k}:${typeof v}`
+    })
+    .join(' ')
 }
 
 function base64Url(buf: Buffer): string {
@@ -194,22 +227,30 @@ export async function sisuAuthorize(
   key: ProofKeyPair,
   accessToken: string,
   deviceToken: string,
+  relyingParty?: string,
 ): Promise<SisuAuthorizeResponse> {
-  log.info('auth', 'Authorizing with SISU')
-  return signedPost<SisuAuthorizeResponse>(
+  log.info('auth', `Authorizing with SISU${relyingParty ? ` for ${relyingParty}` : ''}`)
+  const payload: Record<string, unknown> = {
+    AccessToken: `t=${accessToken}`,
+    AppId: APP_ID,
+    DeviceToken: deviceToken,
+    Sandbox: 'RETAIL',
+    SiteName: 'user.auth.xboxlive.com',
+    UseModernGamertag: true,
+    ProofKey: key.jwk,
+  }
+  // Asking SISU directly for a relying party makes it mint the authorization
+  // token itself, skipping the separate XSTS exchange.
+  if (relyingParty) payload.RelyingParty = relyingParty
+
+  const res = await signedPost<SisuAuthorizeResponse>(
     key,
     'https://sisu.xboxlive.com/authorize',
-    {
-      AccessToken: `t=${accessToken}`,
-      AppId: APP_ID,
-      DeviceToken: deviceToken,
-      Sandbox: 'RETAIL',
-      SiteName: 'user.auth.xboxlive.com',
-      UseModernGamertag: true,
-      ProofKey: key.jwk,
-    },
+    payload,
     'auth.sisu',
   )
+  log.debug('auth', `SISU response shape: ${describeShape(res as unknown as Record<string, unknown>)}`)
+  return res
 }
 
 /** Step 7 — the streaming token. `relyingParty` selects which service it opens. */
@@ -219,18 +260,24 @@ export async function getXstsToken(
   relyingParty = GSSV_RELYING_PARTY,
 ): Promise<XstsToken> {
   log.info('auth', `Requesting XSTS token for ${relyingParty}`)
+  const props = {
+    SandboxId: 'RETAIL',
+    DeviceToken: tokenValue(tokens.DeviceToken, 'DeviceToken'),
+    TitleToken: tokenValue(tokens.TitleToken, 'TitleToken'),
+    UserTokens: [tokenValue(tokens.UserToken, 'UserToken')],
+  }
+  log.debug(
+    'auth',
+    `XSTS request: Device=${redact(props.DeviceToken)} Title=${redact(props.TitleToken)} ` +
+      `User=${redact(props.UserTokens[0])}`,
+  )
   let res: XblTokenResponse
   try {
     res = await signedPost<XblTokenResponse>(
       key,
       'https://xsts.auth.xboxlive.com/xsts/authorize',
       {
-        Properties: {
-          SandboxId: 'RETAIL',
-          DeviceToken: tokens.DeviceToken,
-          TitleToken: tokens.TitleToken.Token,
-          UserTokens: [tokens.UserToken.Token],
-        },
+        Properties: props,
         RelyingParty: relyingParty,
         TokenType: 'JWT',
       },
@@ -287,6 +334,45 @@ export interface SignInResult {
   artifacts: AuthArtifacts
 }
 
+/** Build our token record from a SISU AuthorizationToken. */
+function xstsFromAuthorizationToken(value: MaybeWrappedToken): XstsToken {
+  const token = tokenValue(value, 'AuthorizationToken')
+  const wrapper = (typeof value === 'object' ? value : {}) as XblTokenResponse
+  const claims = wrapper.DisplayClaims?.xui?.[0] ?? {}
+  return {
+    token,
+    userHash: claims.uhs ?? '',
+    gamertag: claims.gtg ?? '',
+    xuid: claims.xid ?? '',
+    notAfter: wrapper.NotAfter ?? new Date(Date.now() + 8 * 3600_000).toISOString(),
+  }
+}
+
+/**
+ * Get a streaming token, by whichever route this account's tenant accepts.
+ *
+ * The documented path is SISU authorize followed by a separate XSTS exchange.
+ * Some accounts reject that exchange outright, but will hand back an
+ * authorization token if SISU is asked for the relying party directly. Try the
+ * documented path first and fall back rather than dead-ending on a bare 400.
+ */
+export async function acquireStreamingToken(
+  key: ProofKeyPair,
+  accessToken: string,
+  deviceToken: string,
+): Promise<XstsToken> {
+  const tokens = await sisuAuthorize(key, accessToken, deviceToken)
+  try {
+    return await getXstsToken(key, tokens)
+  } catch (err) {
+    log.warn('auth', `XSTS exchange failed (${String(err)}); asking SISU directly`)
+    const direct = await sisuAuthorize(key, accessToken, deviceToken, GSSV_RELYING_PARTY)
+    const xsts = xstsFromAuthorizationToken(direct.AuthorizationToken)
+    log.info('auth', `Streaming token obtained via SISU for ${xsts.gamertag || 'account'}`)
+    return xsts
+  }
+}
+
 /**
  * Complete the chain from an MSA refresh token. Used both right after an
  * interactive login and on every subsequent launch.
@@ -297,8 +383,7 @@ export async function completeFromRefreshToken(
   const key = proofKeyFromPem(artifacts.proofKeyPem)
   const oauth = await refreshAccessToken(artifacts.refreshToken)
   const deviceToken = await getDeviceToken(key, artifacts.deviceId)
-  const sisu = await sisuAuthorize(key, oauth.access_token, deviceToken)
-  const xsts = await getXstsToken(key, sisu)
+  const xsts = await acquireStreamingToken(key, oauth.access_token, deviceToken)
   return {
     xsts,
     artifacts: { ...artifacts, refreshToken: oauth.refresh_token || artifacts.refreshToken },
