@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { XboxConsole } from '../../../shared/types.js'
+import type { XboxConsole, StreamSettings } from '../../../shared/types.js'
 
 function powerLabel(state: string): { text: string; tone: string } {
   switch (state) {
@@ -20,12 +20,16 @@ export function ConsoleList({
   error,
   onRefresh,
   onConnect,
+  settings,
+  onSettingsChange,
 }: {
   consoles: XboxConsole[]
   loading: boolean
   error: string | null
   onRefresh: () => void
   onConnect: (target: XboxConsole) => void
+  settings: StreamSettings
+  onSettingsChange: (next: StreamSettings) => void
 }) {
   return (
     <div className="centered">
@@ -65,6 +69,20 @@ export function ConsoleList({
             )
           })}
         </ul>
+
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={settings.autoWake}
+            onChange={(e) => onSettingsChange({ ...settings, autoWake: e.target.checked })}
+          />
+          <span>
+            Turn the console on automatically when connecting
+            <span className="muted small block">
+              Sends a wake command and waits for it to boot before starting the stream.
+            </span>
+          </span>
+        </label>
 
         {consoles.some((c) => c.powerState === 'Off') && (
           <p className="muted small">

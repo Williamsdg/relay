@@ -23,6 +23,7 @@ export interface XboxConsole {
 export type StreamPhase =
   | 'idle'
   | 'authorizing'
+  | 'waking'
   | 'requesting-session'
   | 'provisioning'
   | 'negotiating'

@@ -54,6 +54,18 @@ const DATA_CHANNELS: Array<{ name: string; protocol: string; ordered?: boolean }
   { name: 'message', protocol: 'messageV1' },
 ]
 
+/** Control messages arrive as encoded JSON; render them for the log. */
+function decodeChannelMessage(data: unknown): string {
+  try {
+    if (typeof data === 'string') return data
+    if (data instanceof ArrayBuffer) return new TextDecoder().decode(data)
+    if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data as Uint8Array)
+  } catch {
+    /* fall through to the generic rendering */
+  }
+  return String(data)
+}
+
 /** Renderer-side events go to the same diagnostics log as the REST calls. */
 function log(message: string): void {
   window.relay.log.write('info', 'webrtc', message)
@@ -75,6 +87,7 @@ export class ConnectionManager {
   private pc: RTCPeerConnection | null = null
   private media: MediaStream | null = null
   private detachGamepads: (() => void) | null = null
+  private gamepadSyncTimer: number | null = null
   private channels = new Map<string, RTCDataChannel>()
   private inputTimer: number | null = null
   private keepaliveTimer: number | null = null
@@ -125,6 +138,9 @@ export class ConnectionManager {
           `(${event.gamepad.buttons.length} buttons, ${event.gamepad.axes.length} axes, ` +
           `mapping=${event.gamepad.mapping || 'non-standard'})`,
       )
+      // Slot 0 is announced by the control handshake; extra pads need their
+      // own announcement or the console will not register them.
+      if (event.gamepad.index > 0) this.announceGamepad(event.gamepad.index, true)
       if (event.gamepad.mapping !== 'standard') {
         window.relay.log.write(
           'warn',
@@ -135,6 +151,7 @@ export class ConnectionManager {
     }
     const onDisconnect = (event: GamepadEvent) => {
       log(`controller disconnected from slot ${event.gamepad.index}`)
+      if (event.gamepad.index > 0) this.announceGamepad(event.gamepad.index, false)
     }
     window.addEventListener('gamepadconnected', onConnect)
     window.addEventListener('gamepaddisconnected', onDisconnect)
@@ -156,6 +173,22 @@ export class ConnectionManager {
     const { width, height } = RESOLUTIONS[this.settings.resolution] ?? RESOLUTIONS[1080]
 
     try {
+      if (this.settings.autoWake) {
+        this.setPhase('waking', 'Waking your console')
+        // Informational: the streaming service performs its own wake during
+        // provisioning, so a console that does not report On is still worth
+        // attempting rather than refusing outright.
+        const awake = await window.relay.consoles.ensureOn(this.serverId)
+        if (this.stopped) return
+        if (!awake) {
+          window.relay.log.write(
+            'warn',
+            'xccs',
+            'Console did not confirm it is on; continuing anyway',
+          )
+        }
+      }
+
       this.setPhase('requesting-session', 'Asking Xbox for a streaming session')
       const { handle, config } = await window.relay.session.start({
         serverId: this.serverId,
@@ -218,7 +251,21 @@ export class ConnectionManager {
         this.channels.set(spec.name, channel)
       }
 
+      // Surface channel lifecycle: if input never opens, that is the whole
+      // explanation for "nothing happens when I press a button".
+      for (const [name, channel] of this.channels) {
+        channel.addEventListener('open', () => log(`data channel "${name}" open`))
+        channel.addEventListener('close', () => log(`data channel "${name}" closed`))
+        channel.addEventListener('error', (event) =>
+          window.relay.log.write('error', 'webrtc', `data channel "${name}" error: ${String(event)}`),
+        )
+      }
+
       this.channels.get('input')?.addEventListener('open', () => this.startInputLoop())
+      this.channels.get('control')?.addEventListener('open', () => this.startControlChannel())
+      this.channels.get('control')?.addEventListener('message', (event) => {
+        log(`control message: ${decodeChannelMessage(event.data)}`)
+      })
 
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
@@ -286,6 +333,47 @@ export class ConnectionManager {
     })
   }
 
+  /**
+   * Bring up the control channel.
+   *
+   * This is what makes input work at all. The console ignores every input
+   * packet until it has been told a gamepad exists, and it only believes that
+   * after an explicit `gamepadChanged / wasAdded` announcement. The remove
+   * before the add clears any controller left registered by a previous
+   * session, which otherwise leaves the slot occupied and unresponsive.
+   */
+  private startControlChannel(): void {
+    this.sendControl({
+      message: 'authorizationRequest',
+      accessKey: '4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E',
+    })
+
+    this.announceGamepad(0, false)
+    // The console needs a beat between the remove and the add, otherwise it
+    // coalesces them and ends up with no controller registered.
+    this.gamepadSyncTimer = window.setTimeout(() => {
+      this.announceGamepad(0, true)
+      log('announced gamepad in slot 0')
+    }, 500)
+  }
+
+  private sendControl(payload: Record<string, unknown>): void {
+    const channel = this.channels.get('control')
+    if (!channel || channel.readyState !== 'open') return
+    // Control messages travel as UTF-8 encoded JSON, not as text frames.
+    channel.send(new TextEncoder().encode(JSON.stringify(payload)))
+  }
+
+  /** Tell the console a controller appeared in, or vanished from, a slot. */
+  private announceGamepad(gamepadIndex: number, wasAdded: boolean): void {
+    this.sendControl({ message: 'gamepadChanged', gamepadIndex, wasAdded })
+  }
+
+  /** Ask for a fresh keyframe — useful after a stall or reconnect. */
+  requestKeyframe(): void {
+    this.sendControl({ message: 'videoKeyframeRequested', ifrRequested: true })
+  }
+
   /** Push gamepad state at a fixed rate while the input channel is open. */
   private startInputLoop(): void {
     const channel = this.channels.get('input')
@@ -295,7 +383,9 @@ export class ConnectionManager {
     channel.send(encodeClientMetadata(this.sequence, navigator.maxTouchPoints ?? 0))
 
     const intervalMs = 1000 / this.settings.pollingRate
+    log(`input loop started at ${this.settings.pollingRate}Hz`)
     let sentNeutral = false
+    let sentCount = 0
 
     this.inputTimer = window.setInterval(() => {
       if (channel.readyState !== 'open') return
@@ -310,9 +400,22 @@ export class ConnectionManager {
 
       this.sequence += 1
       try {
-        channel.send(encodeGamepadFrames(this.sequence, frames))
-      } catch {
+        const packet = encodeGamepadFrames(this.sequence, frames)
+        channel.send(packet)
+        sentCount += 1
+        // Confirm the first real press actually leaves the machine. Beyond
+        // that, logging every frame at 62Hz would drown the log.
+        if (sentCount <= 3 || (!neutral && sentCount % 120 === 0)) {
+          log(
+            `input packet #${sentCount}: ${packet.byteLength} bytes, ` +
+              `${frames.length} frame(s), neutral=${neutral}`,
+          )
+        }
+      } catch (err) {
         // Buffer full or channel closing; the next tick recovers.
+        if (sentCount < 3) {
+          window.relay.log.write('warn', 'input', `send failed: ${String(err)}`)
+        }
       }
     }, intervalMs)
   }
@@ -434,6 +537,10 @@ export class ConnectionManager {
       if (timer !== null) window.clearInterval(timer)
     }
     this.inputTimer = this.keepaliveTimer = this.statsTimer = null
+    if (this.gamepadSyncTimer !== null) {
+      window.clearTimeout(this.gamepadSyncTimer)
+      this.gamepadSyncTimer = null
+    }
 
     for (const channel of this.channels.values()) {
       try {

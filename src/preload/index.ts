@@ -39,6 +39,9 @@ const api = {
       ipcRenderer.invoke('console:powerOff', serverId),
     powerOn: (serverId: string): Promise<void> =>
       ipcRenderer.invoke('console:powerOn', serverId),
+    /** Wake and wait; resolves to whether the console reported On. */
+    ensureOn: (serverId: string): Promise<boolean> =>
+      ipcRenderer.invoke('console:ensureOn', serverId),
   },
   window: {
     /** Returns the new fullscreen state. */

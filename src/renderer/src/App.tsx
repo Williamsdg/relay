@@ -25,7 +25,7 @@ export default function App() {
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [logs, setLogs] = useState<LogLine[]>([])
   const [showDiagnostics, setShowDiagnostics] = useState(false)
-  const [settings] = useState<StreamSettings>(DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState<StreamSettings>(DEFAULT_SETTINGS)
 
   const connection = useRef<ConnectionManager | null>(null)
 
@@ -112,6 +112,8 @@ export default function App() {
           error={consolesError}
           onRefresh={loadConsoles}
           onConnect={connect}
+          settings={settings}
+          onSettingsChange={setSettings}
         />
       )
     }
@@ -129,6 +131,7 @@ export default function App() {
     loadConsoles,
     connect,
     signIn,
+    settings,
   ])
 
   return (

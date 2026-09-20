@@ -291,3 +291,16 @@ button.ghost[aria-pressed='true'] { border-color: var(--accent); color: var(--ac
   border-radius: 8px;
   padding: 6px 10px;
 }
+
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.toggle input { margin-top: 2px; accent-color: var(--accent); }
+.block { display: block; }

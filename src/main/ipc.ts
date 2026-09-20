@@ -34,7 +34,7 @@ import {
   stopSession,
   type StreamingSession,
 } from './xhome/client.js'
-import { powerOff, powerOn } from './xhome/xccs.js'
+import { powerOff, powerOn, wakeAndWait } from './xhome/xccs.js'
 import type { AuthState, SessionHandle, XboxConsole } from '../shared/types.js'
 
 interface State {
@@ -224,6 +224,21 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
 
   ipcMain.handle('console:powerOn', async (_e, serverId: string) => {
     await powerOn(await ensureWebToken(), serverId)
+  })
+
+  /**
+   * Wake the console and wait for it. Resolves to whether it came up; a false
+   * result is informational, since provisioning performs its own wake.
+   */
+  ipcMain.handle('console:ensureOn', async (_e, serverId: string) => {
+    try {
+      return await wakeAndWait(await ensureWebToken(), serverId, {
+        onProgress: (s) => getWindow()?.webContents.send('session:state', s),
+      })
+    } catch (err) {
+      log.warn('xccs', `Auto-wake failed: ${String(err)}`)
+      return false
+    }
   })
 
   /** Save a captured frame. Returns the path written, or null if cancelled. */

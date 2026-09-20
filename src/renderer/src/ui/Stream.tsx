@@ -8,6 +8,7 @@ import { ControlPad } from './ControlPad.js'
 /** Phases where we are still working toward a picture. */
 const CONNECTING: StreamStatus['phase'][] = [
   'authorizing',
+  'waking',
   'requesting-session',
   'provisioning',
   'negotiating',
@@ -214,6 +215,8 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function phaseLabel(phase: StreamStatus['phase']): string {
   switch (phase) {
+    case 'waking':
+      return 'Waking the console — this can take up to a minute'
     case 'requesting-session':
       return 'Step 1 of 4 — requesting a session'
     case 'provisioning':
