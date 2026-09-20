@@ -88,10 +88,30 @@ export async function request(url: string, opts: RequestOptions = {}): Promise<R
   throw lastErr
 }
 
+/**
+ * Parse a JSON response, requiring one.
+ *
+ * An empty body used to be handed back as `undefined`, which then blew up as a
+ * TypeError several frames away from the actual cause. Endpoints that may
+ * legitimately answer with nothing should use `requestJsonOptional` and say so
+ * at the call site.
+ */
 export async function requestJson<T>(url: string, opts: RequestOptions = {}): Promise<T> {
+  const value = await requestJsonOptional<T>(url, opts)
+  if (value === undefined) {
+    throw new Error(`${new URL(url).pathname} returned an empty body where JSON was expected`)
+  }
+  return value
+}
+
+/** Same, but an empty body is a valid answer and comes back as undefined. */
+export async function requestJsonOptional<T>(
+  url: string,
+  opts: RequestOptions = {},
+): Promise<T | undefined> {
   const res = await request(url, opts)
   const text = await res.text()
-  if (!text) return undefined as T
+  if (!text.trim()) return undefined
   try {
     return JSON.parse(text) as T
   } catch {

@@ -6,7 +6,7 @@
  * be blocked outright, and keeping the gsToken out of the web context means a
  * compromised page cannot exfiltrate it.
  */
-import { requestJson, request, HttpError } from '../http.js'
+import { requestJson, requestJsonOptional, request, HttpError } from '../http.js'
 import { log, redact } from '../logger.js'
 import type { XboxConsole, SessionHandle, RemoteIceCandidate } from '../../shared/types.js'
 
@@ -195,8 +195,8 @@ export interface SessionState {
 export async function getSessionState(
   session: StreamingSession,
   handle: SessionHandle,
-): Promise<SessionState> {
-  return requestJson<SessionState>(sessionUrl(handle, '/state'), {
+): Promise<SessionState | undefined> {
+  return requestJsonOptional<SessionState>(sessionUrl(handle, '/state'), {
     headers: authHeaders(session),
     scope: 'xhome',
     retries: 1,
@@ -219,7 +219,12 @@ export async function waitForProvisioned(
   const deadline = Date.now() + timeoutMs
   let last = ''
   while (Date.now() < deadline) {
-    const { state, errorDetails } = await getSessionState(session, handle)
+    const status = await getSessionState(session, handle)
+    if (!status) {
+      await new Promise((r) => setTimeout(r, 1000))
+      continue
+    }
+    const { state, errorDetails } = status
     if (state !== last) {
       last = state
       log.info('xhome', `Session state: ${state}`)
@@ -286,15 +291,19 @@ async function pollExchange(
 ): Promise<string> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    const res = await requestJson<{
+    const res = await requestJsonOptional<{
       exchangeResponse?: string
       errorDetails?: { code?: string | null; message?: string | null }
     }>(sessionUrl(handle, suffix), { headers: authHeaders(session), scope: 'xhome', retries: 1 })
 
-    if (res.errorDetails?.code) {
-      throw new Error(res.errorDetails.message || res.errorDetails.code)
+    // The service answers with an empty body until the console has replied.
+    // That is the normal "still waiting" signal, not an error.
+    if (res) {
+      if (res.errorDetails?.code) {
+        throw new Error(res.errorDetails.message || res.errorDetails.code)
+      }
+      if (res.exchangeResponse) return res.exchangeResponse
     }
-    if (res.exchangeResponse) return res.exchangeResponse
     await new Promise((r) => setTimeout(r, 500))
   }
   throw new Error(`The console never answered the ${suffix.replace('/', '')} exchange`)
