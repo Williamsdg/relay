@@ -5,10 +5,12 @@
  * main process owns every credential and every REST call. The renderer never
  * sees a token — it asks main to perform exchanges on its behalf.
  */
-import { ipcMain, type BrowserWindow } from 'electron'
+import { ipcMain, dialog, type BrowserWindow } from 'electron'
+import { writeFile } from 'node:fs/promises'
 import { log } from './logger.js'
 import {
   acquireStreamingToken,
+  acquireWebToken,
   completeFromRefreshToken,
   createPkce,
   exchangeCode,
@@ -32,6 +34,7 @@ import {
   stopSession,
   type StreamingSession,
 } from './xhome/client.js'
+import { powerOff, powerOn } from './xhome/xccs.js'
 import type { AuthState, SessionHandle, XboxConsole } from '../shared/types.js'
 
 interface State {
@@ -39,9 +42,27 @@ interface State {
   xsts: XstsToken | null
   streaming: StreamingSession | null
   handle: SessionHandle | null
+  /** Console-command token; minted on demand and reused until it expires. */
+  web: XstsToken | null
 }
 
-const state: State = { artifacts: null, xsts: null, streaming: null, handle: null }
+const state: State = {
+  artifacts: null,
+  xsts: null,
+  streaming: null,
+  handle: null,
+  web: null,
+}
+
+/** The console command service needs its own token, so fetch it lazily. */
+async function ensureWebToken(): Promise<XstsToken> {
+  if (state.web && new Date(state.web.notAfter).getTime() > Date.now() + 60_000) {
+    return state.web
+  }
+  if (!state.artifacts) throw new Error('Not signed in')
+  state.web = await acquireWebToken(state.artifacts)
+  return state.web
+}
 
 /** Guards against overlapping interactive sign-ins. */
 let signInInFlight = false
@@ -78,6 +99,12 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   log.subscribe((line) => getWindow()?.webContents.send('log', line))
 
   ipcMain.handle('log:history', () => log.history())
+
+  // The renderer owns WebRTC, so its events belong in the same log as the
+  // REST calls; otherwise half the connection story is invisible.
+  ipcMain.on('log:write', (_e, level: 'debug' | 'info' | 'warn' | 'error', scope: string, message: string) => {
+    log[level]?.(scope, message)
+  })
 
   ipcMain.handle('auth:state', () => authState())
 
@@ -143,6 +170,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     state.xsts = null
     state.streaming = null
     state.handle = null
+    state.web = null
     clearArtifacts()
     return authState()
   })
@@ -188,6 +216,39 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('session:keepalive', async () => {
     if (!state.streaming || !state.handle) return
     await sendKeepalive(state.streaming, state.handle)
+  })
+
+  ipcMain.handle('console:powerOff', async (_e, serverId: string) => {
+    await powerOff(await ensureWebToken(), serverId)
+  })
+
+  ipcMain.handle('console:powerOn', async (_e, serverId: string) => {
+    await powerOn(await ensureWebToken(), serverId)
+  })
+
+  /** Save a captured frame. Returns the path written, or null if cancelled. */
+  ipcMain.handle('window:saveImage', async (_e, dataUrl: string) => {
+    const win = getWindow()
+    if (!win) return null
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: 'Save screenshot',
+      defaultPath: `relay-${stamp}.png`,
+      filters: [{ name: 'PNG image', extensions: ['png'] }],
+    })
+    if (canceled || !filePath) return null
+    const base64 = dataUrl.replace(/^data:image\/png;base64,/, '')
+    await writeFile(filePath, Buffer.from(base64, 'base64'))
+    log.info('app', `Screenshot saved to ${filePath}`)
+    return filePath
+  })
+
+  ipcMain.handle('window:toggleFullscreen', () => {
+    const win = getWindow()
+    if (!win) return false
+    const next = !win.isFullScreen()
+    win.setFullScreen(next)
+    return next
   })
 
   ipcMain.handle('session:stop', async () => {

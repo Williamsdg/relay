@@ -396,6 +396,24 @@ export async function completeFromRefreshToken(
   }
 }
 
+/** Relying party for the console command service — not the streaming one. */
+export const XBOXLIVE_RELYING_PARTY = 'http://xboxlive.com'
+
+/**
+ * A token for the console command service.
+ *
+ * Deliberately separate from the streaming token: different relying party,
+ * different claims, and its display claims carry the user hash that the
+ * XBL3.0 auth header needs.
+ */
+export async function acquireWebToken(artifacts: AuthArtifacts): Promise<XstsToken> {
+  const key = proofKeyFromPem(artifacts.proofKeyPem)
+  const oauth = await refreshAccessToken(artifacts.refreshToken)
+  const deviceToken = await getDeviceToken(key, artifacts.deviceId)
+  const tokens = await sisuAuthorize(key, oauth.access_token, deviceToken)
+  return getXstsToken(key, tokens, deviceToken, XBOXLIVE_RELYING_PARTY)
+}
+
 /** Fresh keys + device identity for a first-time interactive sign-in. */
 export function newIdentity(): { key: ProofKeyPair; deviceId: string } {
   return { key: generateProofKey(), deviceId: randomUUID() }

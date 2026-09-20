@@ -16,7 +16,8 @@
 import type { StreamSettings, StreamStatus, StreamPhase } from '../../../shared/types.js'
 import { classifyError } from '../../../shared/errors.js'
 import { encodeClientMetadata, encodeGamepadFrames } from './packet.js'
-import { readGamepads, isNeutral } from './gamepad.js'
+import { collectFrames, isNeutral } from './gamepad.js'
+import { virtualPad } from './virtualPad.js'
 
 export interface StreamStats {
   fps: number
@@ -53,6 +54,11 @@ const DATA_CHANNELS: Array<{ name: string; protocol: string; ordered?: boolean }
   { name: 'message', protocol: 'messageV1' },
 ]
 
+/** Renderer-side events go to the same diagnostics log as the REST calls. */
+function log(message: string): void {
+  window.relay.log.write('info', 'webrtc', message)
+}
+
 const RESOLUTIONS: Record<number, { width: number; height: number }> = {
   720: { width: 1280, height: 720 },
   1080: { width: 1920, height: 1080 },
@@ -67,6 +73,8 @@ export interface ConnectionCallbacks {
 
 export class ConnectionManager {
   private pc: RTCPeerConnection | null = null
+  private media: MediaStream | null = null
+  private detachGamepads: (() => void) | null = null
   private channels = new Map<string, RTCDataChannel>()
   private inputTimer: number | null = null
   private keepaliveTimer: number | null = null
@@ -99,7 +107,48 @@ export class ConnectionManager {
     this.serverId = serverId
     this.stopped = false
     this.reconnects = 0
+    this.watchGamepads()
     await this.connect()
+  }
+
+  /**
+   * Report controllers as they appear.
+   *
+   * Browsers hide gamepads until the page has seen one of their buttons
+   * pressed, so a controller that is plugged in but untouched is genuinely
+   * invisible. Saying so beats letting the user conclude input is broken.
+   */
+  private watchGamepads(): void {
+    const onConnect = (event: GamepadEvent) => {
+      log(
+        `controller connected in slot ${event.gamepad.index}: ${event.gamepad.id} ` +
+          `(${event.gamepad.buttons.length} buttons, ${event.gamepad.axes.length} axes, ` +
+          `mapping=${event.gamepad.mapping || 'non-standard'})`,
+      )
+      if (event.gamepad.mapping !== 'standard') {
+        window.relay.log.write(
+          'warn',
+          'input',
+          'This controller does not use the standard mapping, so buttons may be wrong.',
+        )
+      }
+    }
+    const onDisconnect = (event: GamepadEvent) => {
+      log(`controller disconnected from slot ${event.gamepad.index}`)
+    }
+    window.addEventListener('gamepadconnected', onConnect)
+    window.addEventListener('gamepaddisconnected', onDisconnect)
+    this.detachGamepads = () => {
+      window.removeEventListener('gamepadconnected', onConnect)
+      window.removeEventListener('gamepaddisconnected', onDisconnect)
+    }
+
+    const already = (navigator.getGamepads?.() ?? []).filter(Boolean).length
+    log(
+      already > 0
+        ? `${already} controller(s) already visible`
+        : 'no controllers visible yet — press a button on one to wake it',
+    )
   }
 
   /** One full connect attempt, from session request to first frame. */
@@ -125,8 +174,23 @@ export class ConnectionManager {
         if (event.candidate) localCandidates.push(event.candidate.toJSON())
       })
 
+      // Build our own MediaStream from the arriving tracks rather than relying
+      // on event.streams[0]. That array is only populated when the remote SDP
+      // carries an msid attribute; without one it is empty, and keying off it
+      // means the video element never gets a source even though frames are
+      // decoding perfectly.
+      const media = new MediaStream()
+      this.media = media
       pc.addEventListener('track', (event) => {
-        if (event.streams[0]) this.cb.onStream(event.streams[0])
+        const track = event.track
+        log(
+          `track arrived: ${track.kind} id=${track.id} muted=${track.muted} ` +
+            `streams=${event.streams.length}`,
+        )
+        if (!media.getTracks().some((t) => t.id === track.id)) media.addTrack(track)
+        track.addEventListener('unmute', () => log(`${track.kind} track unmuted`))
+        track.addEventListener('ended', () => log(`${track.kind} track ended`))
+        this.cb.onStream(media)
       })
 
       pc.addEventListener('connectionstatechange', () => {
@@ -235,7 +299,7 @@ export class ConnectionManager {
 
     this.inputTimer = window.setInterval(() => {
       if (channel.readyState !== 'open') return
-      const frames = readGamepads()
+      const frames = collectFrames()
       if (frames.length === 0) return
 
       // Stop resending an all-zero state once the console has it, but always
@@ -389,6 +453,13 @@ export class ConnectionManager {
       this.pc = null
     }
 
+    // Stop the tracks so the decoder is released rather than left running
+    // against a closed transport.
+    if (this.media) {
+      for (const track of this.media.getTracks()) track.stop()
+      this.media = null
+    }
+
     this.lastFramesDecoded = 0
     this.lastStatsAt = 0
     this.lastBytesReceived = 0
@@ -398,6 +469,9 @@ export class ConnectionManager {
 
   async stop(): Promise<void> {
     this.stopped = true
+    this.detachGamepads?.()
+    this.detachGamepads = null
+    virtualPad.reset()
     this.teardownPeer()
     await window.relay.session.stop().catch(() => undefined)
     this.setPhase('stopped', 'Disconnected')

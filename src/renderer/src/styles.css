@@ -217,3 +217,77 @@ button.ghost[aria-pressed='true'] { border-color: var(--accent); color: var(--ac
   text-align: left;
   font-size: 13px;
 }
+
+/* ---- On-screen controller ---- */
+.controlpad {
+  position: absolute;
+  right: 16px;
+  bottom: 64px;
+  width: 300px;
+  background: rgba(20, 26, 22, 0.95);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  backdrop-filter: blur(8px);
+}
+.controlpad-head { display: flex; align-items: center; gap: 8px; }
+.controlpad-body { display: flex; flex-direction: column; gap: 10px; }
+
+.padkey {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 0;
+  font-size: 13px;
+  font-weight: 600;
+  /* A held direction must repeat, not select text under the cursor. */
+  user-select: none;
+  touch-action: none;
+}
+.padkey.held { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.padkey.nexus { background: rgba(82, 196, 106, 0.16); border-color: rgba(82, 196, 106, 0.5); color: var(--accent); }
+.padkey.nexus.held { background: var(--accent); color: var(--accent-ink); }
+
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 4px;
+  width: 132px;
+  align-self: center;
+}
+.dpad-up { grid-area: 1 / 2; }
+.dpad-left { grid-area: 2 / 1; }
+.dpad-right { grid-area: 2 / 3; }
+.dpad-down { grid-area: 3 / 2; }
+
+.system-keys, .shoulder-keys { display: grid; gap: 6px; }
+.system-keys { grid-template-columns: 1fr 1fr 1fr; }
+.shoulder-keys { grid-template-columns: 1fr 1fr; }
+
+.face-keys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 4px;
+  width: 132px;
+  align-self: center;
+}
+.face-y { grid-area: 1 / 2; }
+.face-x { grid-area: 2 / 1; }
+.face-b { grid-area: 2 / 3; }
+.face-a { grid-area: 3 / 2; }
+
+.keyhint {
+  position: absolute;
+  left: 14px;
+  bottom: 52px;
+  max-width: 60%;
+  background: rgba(20, 26, 22, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+}

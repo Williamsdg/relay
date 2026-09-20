@@ -4,6 +4,7 @@
  * button indices below are fixed rather than per-device.
  */
 import { emptyFrame, type InputFrame } from './packet.js'
+import { virtualPad } from './virtualPad.js'
 
 const Button = {
   A: 0,
@@ -112,4 +113,28 @@ export function isNeutral(f: InputFrame): boolean {
     f.LeftTrigger === 0 &&
     f.RightTrigger === 0
   )
+}
+
+/**
+ * Every input source, merged into the frames the console receives.
+ *
+ * Physical controllers map one-to-one onto controller slots. The virtual pad
+ * (keyboard, mouse and on-screen buttons) folds into slot 0, so using the
+ * keyboard while a controller is plugged in does not create a phantom second
+ * player.
+ */
+export function collectFrames(): InputFrame[] {
+  const frames = readGamepads()
+  const virtualActive = virtualPad.isActive()
+
+  if (frames.length === 0) {
+    // No physical controller: the virtual pad becomes player one. Emit a frame
+    // even when idle so the console keeps seeing a connected controller.
+    const frame = emptyFrame(0)
+    if (virtualActive) virtualPad.mergeInto(frame)
+    return [frame]
+  }
+
+  if (virtualActive) virtualPad.mergeInto(frames[0])
+  return frames
 }

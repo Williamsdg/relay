@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { XboxConsole } from '../../../shared/types.js'
 
 function powerLabel(state: string): { text: string; tone: string } {
@@ -56,6 +57,7 @@ export function ConsoleList({
                   <span className={`badge ${power.tone}`}>{power.text}</span>
                   <span className="muted small">{c.consoleType}</span>
                 </div>
+                <PowerButton target={c} onDone={onRefresh} />
                 <button className="primary" onClick={() => onConnect(c)} disabled={off}>
                   {off ? 'Unavailable' : 'Connect'}
                 </button>
@@ -71,5 +73,39 @@ export function ConsoleList({
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Power control for one console.
+ *
+ * The command service only confirms that it accepted the request, not that the
+ * console obeyed, so the button reports "Sent" and leaves it to a refresh to
+ * show the real power state rather than pretending to know.
+ */
+function PowerButton({ target, onDone }: { target: XboxConsole; onDone: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState(false)
+  const isOn = target.powerState === 'On'
+
+  const run = async () => {
+    setBusy(true)
+    try {
+      if (isOn) await window.relay.consoles.powerOff(target.serverId)
+      else await window.relay.consoles.powerOn(target.serverId)
+      setSent(true)
+      // Give the console a moment to act before asking for its new state.
+      setTimeout(onDone, 4000)
+    } catch (err) {
+      window.relay.log.write('error', 'xccs', String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button className="ghost" onClick={run} disabled={busy}>
+      {busy ? 'Sending…' : sent ? 'Sent' : isOn ? 'Turn off' : 'Turn on'}
+    </button>
   )
 }

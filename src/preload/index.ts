@@ -15,6 +15,10 @@ import type {
 const api = {
   log: {
     history: (): Promise<LogLine[]> => ipcRenderer.invoke('log:history'),
+    /** Record a renderer-side event (WebRTC, media, input) in the shared log. */
+    write: (level: LogLine['level'], scope: string, message: string): void => {
+      ipcRenderer.send('log:write', level, scope, message)
+    },
     onLine: (cb: (line: LogLine) => void) => {
       const handler = (_e: unknown, line: LogLine) => cb(line)
       ipcRenderer.on('log', handler)
@@ -31,6 +35,17 @@ const api = {
   },
   consoles: {
     list: (): Promise<XboxConsole[]> => ipcRenderer.invoke('consoles:list'),
+    powerOff: (serverId: string): Promise<void> =>
+      ipcRenderer.invoke('console:powerOff', serverId),
+    powerOn: (serverId: string): Promise<void> =>
+      ipcRenderer.invoke('console:powerOn', serverId),
+  },
+  window: {
+    /** Returns the new fullscreen state. */
+    toggleFullscreen: (): Promise<boolean> => ipcRenderer.invoke('window:toggleFullscreen'),
+    /** Save a PNG data URL; resolves to the path written, or null if cancelled. */
+    saveImage: (dataUrl: string): Promise<string | null> =>
+      ipcRenderer.invoke('window:saveImage', dataUrl),
   },
   session: {
     start: (opts: {
