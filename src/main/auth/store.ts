@@ -78,3 +78,23 @@ export async function clearArtifacts(): Promise<void> {
   await store.remove(KEY)
   log.info('auth', 'Stored credentials cleared')
 }
+
+const RELAY_TOKEN_KEY = 'relay-token'
+
+/**
+ * The relay API token lives in the keychain rather than settings.json.
+ * It grants access to the user's Cloudflare account, so it gets the same
+ * treatment as the Xbox refresh token.
+ */
+export async function saveRelayToken(token: string): Promise<void> {
+  if (!token) {
+    await store.remove(RELAY_TOKEN_KEY)
+    return
+  }
+  await store.set(RELAY_TOKEN_KEY, token)
+  log.info('settings', 'Relay token saved to the system keychain')
+}
+
+export async function loadRelayToken(): Promise<string | null> {
+  return store.get(RELAY_TOKEN_KEY)
+}

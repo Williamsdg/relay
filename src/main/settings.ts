@@ -40,13 +40,23 @@ export function loadSettings(): PersistedState {
   return cached
 }
 
+/**
+ * The relay API token is a credential, so it never goes in this file. It is
+ * held in the OS keychain and merged back in memory by `loadSettings`.
+ */
+function stripSecret(state: PersistedState): PersistedState {
+  if (!state.turn?.apiToken) return state
+  const { apiToken: _omitted, ...turn } = state.turn
+  return { ...state, turn: turn as PersistedState['turn'] }
+}
+
 export function saveSettings(next: Partial<PersistedState>): PersistedState {
   const merged = sanitiseSettings({ ...loadSettings(), ...next })
   cached = merged
   try {
     const path = settingsPath()
     mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, JSON.stringify(merged, null, 2))
+    writeFileSync(path, JSON.stringify(stripSecret(merged), null, 2))
   } catch (err) {
     // A failed write must not stop the user doing what they were doing.
     log.warn('settings', `Could not save settings: ${String(err)}`)

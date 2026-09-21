@@ -28,6 +28,7 @@ export default function App() {
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [settings, setSettings] = useState<StreamSettings>(DEFAULT_SETTINGS)
   const [lastConsoleId, setLastConsoleId] = useState<string | undefined>()
+  const [hasStoredToken, setHasStoredToken] = useState(false)
 
   const connection = useRef<ConnectionManager | null>(null)
 
@@ -46,16 +47,22 @@ export default function App() {
 
   useEffect(() => {
     void window.relay.settings.get().then((stored) => {
-      const { lastConsoleId: last, ...rest } = stored
+      const { lastConsoleId: last, hasRelayToken, ...rest } = stored as typeof stored & {
+        hasRelayToken?: boolean
+      }
       setSettings(rest)
       setLastConsoleId(last)
+      setHasStoredToken(Boolean(hasRelayToken))
     })
   }, [])
 
   // Persist whenever the user changes something, so nothing resets on relaunch.
   const updateSettings = useCallback((next: StreamSettings) => {
     setSettings(next)
-    void window.relay.settings.set(next)
+    void window.relay.settings.set(next).then((saved) => {
+      const stored = (saved as { hasRelayToken?: boolean }).hasRelayToken
+      if (stored !== undefined) setHasStoredToken(stored)
+    })
   }, [])
 
   const loadConsoles = useCallback(async () => {
@@ -134,6 +141,7 @@ export default function App() {
           settings={settings}
           onSettingsChange={updateSettings}
           lastConsoleId={lastConsoleId}
+          hasStoredToken={hasStoredToken}
         />
       )
     }
@@ -154,6 +162,7 @@ export default function App() {
     settings,
     updateSettings,
     lastConsoleId,
+    hasStoredToken,
   ])
 
   return (

@@ -24,6 +24,7 @@ export function ConsoleList({
   settings,
   onSettingsChange,
   lastConsoleId,
+  hasStoredToken,
 }: {
   consoles: XboxConsole[]
   loading: boolean
@@ -33,6 +34,7 @@ export function ConsoleList({
   settings: StreamSettings
   onSettingsChange: (next: StreamSettings) => void
   lastConsoleId?: string
+  hasStoredToken: boolean
 }) {
   return (
     <div className="centered">
@@ -144,7 +146,11 @@ export function ConsoleList({
           </span>
         </label>
 
-        <RelaySettings settings={settings} onChange={onSettingsChange} />
+        <RelaySettings
+          settings={settings}
+          onChange={onSettingsChange}
+          hasStoredToken={hasStoredToken}
+        />
 
         {consoles.some((c) => c.powerState === 'Off') && (
           <p className="muted small">

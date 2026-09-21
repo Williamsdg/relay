@@ -25,9 +25,12 @@ const EMPTY: TurnServer = {
 export function RelaySettings({
   settings,
   onChange,
+  hasStoredToken,
 }: {
   settings: StreamSettings
   onChange: (next: StreamSettings) => void
+  /** True when a token is already held in the keychain. */
+  hasStoredToken: boolean
 }) {
   const turn = settings.turn ?? EMPTY
   const [testing, setTesting] = useState(false)
@@ -47,7 +50,7 @@ export function RelaySettings({
     setTesting(true)
     setResult(null)
     try {
-      setResult(await window.relay.relay.test(turn))
+      setResult(await window.relay.relay.test())
     } finally {
       setTesting(false)
     }
@@ -97,13 +100,20 @@ export function RelaySettings({
             />
           </label>
           <label className="field">
-            <span className="muted small">API token</span>
+            <span className="muted small">
+              API token{hasStoredToken ? ' — saved in your keychain' : ''}
+            </span>
             <input
               type="password"
+              placeholder={hasStoredToken ? 'Stored — type to replace' : ''}
               value={turn.apiToken ?? ''}
               onChange={(e) => update({ apiToken: e.target.value })}
             />
           </label>
+          <p className="muted small">
+            The token is kept in the macOS Keychain, never in a settings file, and stays in the
+            app's privileged process — it is not readable by the page that renders your stream.
+          </p>
         </>
       ) : (
         <>

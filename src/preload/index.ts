@@ -53,8 +53,8 @@ const api = {
       ipcRenderer.invoke('console:ensureOn', serverId),
   },
   relay: {
-    test: (turn: unknown): Promise<{ ok: boolean; message: string }> =>
-      ipcRenderer.invoke('relay:test', turn),
+    /** Tests the stored relay; the token stays in the main process. */
+    test: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('relay:test'),
   },
   window: {
     /** Returns the new fullscreen state. */

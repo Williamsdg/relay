@@ -17,7 +17,13 @@ import { createXhome, type StreamingSession } from '../core/xhome.js'
 import { createXccs } from '../core/xccs.js'
 import { resolveIceServers, fetchCloudflareIceServers } from '../core/turn.js'
 import { promptForAuthCode, SignInCancelled } from './auth/browser.js'
-import { loadArtifacts, saveArtifacts, clearArtifacts } from './auth/store.js'
+import {
+  loadArtifacts,
+  saveArtifacts,
+  clearArtifacts,
+  saveRelayToken,
+  loadRelayToken,
+} from './auth/store.js'
 import type { AuthState, SessionHandle, XboxConsole } from '../shared/types.js'
 
 const http = createHttp(httpClient, logger)
@@ -38,6 +44,15 @@ const state: State = { artifacts: null, xsts: null, streaming: null, handle: nul
 
 /** Guards against overlapping interactive sign-ins. */
 let signInInFlight = false
+
+/** Settings plus the keychain-held token, for the paths that need it. */
+async function relayConfig(): Promise<PersistedState['turn']> {
+  const turn = loadSettings().turn
+  if (!turn) return undefined
+  if (turn.provider !== 'cloudflare') return turn
+  const apiToken = await loadRelayToken()
+  return apiToken ? { ...turn, apiToken } : turn
+}
 
 function authState(): AuthState {
   if (!state.xsts) return { status: 'signed-out' }
@@ -84,8 +99,28 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     log[level]?.(scope, message)
   })
 
-  ipcMain.handle('settings:get', () => loadSettings())
-  ipcMain.handle('settings:set', (_e, next: Partial<PersistedState>) => saveSettings(next))
+  /**
+   * Settings never carry the relay token out to the renderer; the UI only
+   * needs to know whether one is stored. Keeping it in this process is what
+   * makes "the token never reaches the web context" actually true.
+   */
+  ipcMain.handle('settings:get', async () => {
+    const settings = loadSettings()
+    const hasRelayToken = Boolean(await loadRelayToken())
+    return { ...settings, hasRelayToken }
+  })
+
+  ipcMain.handle('settings:set', async (_e, next: Partial<PersistedState>) => {
+    // A token arriving from the UI is moved straight into the keychain and
+    // removed from the value that gets persisted or echoed back.
+    const token = next.turn?.apiToken
+    if (typeof token === 'string') {
+      await saveRelayToken(token)
+      next = { ...next, turn: { ...next.turn, apiToken: undefined } as PersistedState['turn'] }
+    }
+    const saved = saveSettings(next)
+    return { ...saved, hasRelayToken: Boolean(await loadRelayToken()) }
+  })
 
   ipcMain.handle('auth:state', () => authState())
 
@@ -205,12 +240,13 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   })
 
   ipcMain.handle('session:relayServers', async () => {
-    return resolveIceServers(http, loadSettings().turn, logger)
+    return resolveIceServers(http, await relayConfig(), logger)
   })
 
   /** Verify a relay before relying on it: mistyped credentials fail like a
    *  network fault once a session is underway. */
-  ipcMain.handle('relay:test', async (_e, turn: PersistedState['turn']) => {
+  ipcMain.handle('relay:test', async () => {
+    const turn = await relayConfig()
     if (!turn) return { ok: false, message: 'No relay configured.' }
     try {
       if (turn.provider === 'cloudflare') {
