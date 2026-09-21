@@ -4,3 +4,8 @@ dist/
 .DS_Store
 *.log
 release/
+mobile/node_modules/
+mobile/dist/
+mobile/ios/App/Pods/
+mobile/ios/App/App/public/
+mobile/ios/App/Podfile.lock

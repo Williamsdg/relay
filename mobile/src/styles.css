@@ -1,0 +1,247 @@
+:root {
+  --bg: #0b0f0c;
+  --panel: #141a16;
+  --panel-2: #1b231d;
+  --line: #2a352c;
+  --text: #e8efe9;
+  --muted: #8ea393;
+  --accent: #52c46a;
+  --accent-ink: #06210c;
+  --bad: #ef5f5f;
+  --warn: #e3b341;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body, #root { height: 100%; margin: 0; overscroll-behavior: none; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  /* Text selection during a drag is never wanted in a game overlay. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.screen {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  /* Keep clear of the notch and the home indicator. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.centered { align-items: center; justify-content: center; padding: 24px; }
+.boot { height: 100%; display: grid; place-items: center; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.brand { font-weight: 650; }
+.spacer { flex: 1; }
+
+.scroll { flex: 1; overflow-y: auto; padding: 16px; -webkit-overflow-scrolling: touch; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+h1 { font-size: 24px; margin: 0; }
+h2 { font-size: 17px; margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+.error, .guidance {
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0;
+  font-size: 14px;
+}
+.error { color: var(--bad); background: rgba(239,95,95,.1); border: 1px solid rgba(239,95,95,.25); }
+.guidance { color: var(--text); background: rgba(227,179,65,.08); border: 1px solid rgba(227,179,65,.3); }
+
+button {
+  font: inherit;
+  border-radius: 10px;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  /* 44pt is Apple's minimum comfortable touch target. */
+  min-height: 44px;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.big { padding: 14px; font-size: 16px; }
+button.ghost { background: transparent; }
+button.danger { color: var(--bad); border-color: rgba(239,95,95,.4); }
+button:disabled { opacity: .45; }
+
+.section-head { display: flex; align-items: center; gap: 10px; margin: 18px 0 10px; }
+.section-head h2 { flex: 1; }
+
+.console-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.console-list li {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 14px;
+}
+.console-info { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+.console-name { font-weight: 600; }
+
+.badge {
+  width: fit-content; font-size: 12px; padding: 3px 9px;
+  border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+}
+.badge.good { color: var(--accent); border-color: rgba(82,196,106,.4); }
+.badge.warn { color: var(--warn); border-color: rgba(227,179,65,.4); }
+.badge.bad  { color: var(--bad);  border-color: rgba(239,95,95,.4); }
+
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.field select {
+  font: inherit; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+}
+.toggle {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 14px; margin-bottom: 10px;
+}
+.toggle input { width: 22px; height: 22px; accent-color: var(--accent); }
+
+.spinner {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 3px solid var(--line); border-top-color: var(--accent);
+  animation: spin 800ms linear infinite; margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Stream stage ---- */
+.stage { position: fixed; inset: 0; background: #000; }
+.video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+
+.overlay {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background: rgba(11,15,12,.88); padding: 24px;
+}
+.overlay .card { align-items: center; text-align: center; }
+
+.menu-tab {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 8px);
+  right: calc(env(safe-area-inset-right) + 8px);
+  width: 44px; min-height: 44px; padding: 0;
+  border-radius: 22px;
+  background: rgba(20,26,22,.75);
+  backdrop-filter: blur(8px);
+  z-index: 30;
+}
+
+.menu-sheet {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 60px);
+  right: calc(env(safe-area-inset-right) + 8px);
+  width: min(340px, 84vw);
+  background: rgba(20,26,22,.96);
+  border: 1px solid var(--line);
+  border-radius: 14px; padding: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+  backdrop-filter: blur(10px);
+  z-index: 30;
+}
+.menu-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.menu-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.log {
+  max-height: 200px; overflow-y: auto;
+  font: 11px/1.45 ui-monospace, Menlo, monospace;
+  background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px;
+}
+.log-line { padding: 2px 0; }
+.log-line.warn { color: var(--warn); }
+.log-line.error { color: var(--bad); }
+
+/* ---- Touch controls ---- */
+.touchpad { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
+.touchpad > * { pointer-events: auto; }
+
+.touch-btn {
+  background: rgba(27,35,29,.55);
+  border: 1px solid rgba(232,239,233,.18);
+  color: var(--text);
+  border-radius: 50%;
+  width: 58px; height: 58px; min-height: 58px;
+  padding: 0; font-weight: 700; font-size: 15px;
+  backdrop-filter: blur(3px);
+}
+.touch-btn.held { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.touch-btn.small { width: auto; height: 38px; min-height: 38px; border-radius: 19px; padding: 0 14px; font-size: 13px; }
+.touch-btn.nexus { color: var(--accent); border-color: rgba(82,196,106,.5); }
+.touch-btn.nexus.held { color: var(--accent-ink); }
+.touch-btn.trigger { border-radius: 14px; width: 62px; height: 42px; min-height: 42px; }
+
+.shoulder-row { position: absolute; top: calc(env(safe-area-inset-top) + 10px); display: flex; gap: 10px; }
+.shoulder-row.left { left: calc(env(safe-area-inset-left) + 16px); }
+.shoulder-row.right { right: calc(env(safe-area-inset-right) + 64px); }
+
+/* The stick zones are large invisible areas; the visible base only appears
+   under the thumb, wherever it lands. */
+.stick-zone { position: absolute; bottom: 0; width: 44%; height: 58%; }
+.stick-left { left: 0; }
+.stick-right { right: 0; }
+
+.stick-base {
+  position: absolute; left: 50%; top: 50%;
+  width: 116px; height: 116px; margin: -58px 0 0 -58px;
+  border-radius: 50%;
+  border: 1px solid rgba(232,239,233,.14);
+  background: rgba(27,35,29,.3);
+  opacity: .5; transition: opacity 120ms ease;
+}
+.stick-base.active { opacity: 1; }
+.stick-knob {
+  position: absolute; left: 50%; top: 50%;
+  width: 52px; height: 52px; margin: -26px 0 0 -26px;
+  border-radius: 50%;
+  background: rgba(82,196,106,.55);
+  border: 1px solid rgba(82,196,106,.8);
+}
+
+.dpad-cluster, .face-cluster {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom) + 18px);
+  display: grid;
+  grid-template-columns: repeat(3, 58px);
+  grid-template-rows: repeat(3, 58px);
+  gap: 4px;
+}
+.dpad-cluster { left: calc(env(safe-area-inset-left) + 14px); }
+.face-cluster { right: calc(env(safe-area-inset-right) + 14px); }
+
+.d-up { grid-area: 1 / 2; } .d-left { grid-area: 2 / 1; }
+.d-right { grid-area: 2 / 3; } .d-down { grid-area: 3 / 2; }
+.f-y { grid-area: 1 / 2; } .f-x { grid-area: 2 / 1; }
+.f-b { grid-area: 2 / 3; } .f-a { grid-area: 3 / 2; }
+
+.system-row {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
+  left: 50%; transform: translateX(-50%);
+  display: flex; gap: 10px;
+}
