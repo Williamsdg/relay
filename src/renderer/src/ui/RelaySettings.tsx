@@ -37,12 +37,7 @@ export function RelaySettings({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const update = (patch: Partial<TurnServer>) => {
-    const next = { ...turn, ...patch }
-    const configured =
-      next.provider === 'cloudflare'
-        ? Boolean(next.keyId?.trim() && next.apiToken?.trim())
-        : Boolean(next.url.trim() && next.username && next.credential)
-    onChange({ ...settings, turn: configured ? next : { ...next } })
+    onChange({ ...settings, turn: { ...turn, ...patch } })
     setResult(null)
   }
 

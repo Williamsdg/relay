@@ -59,9 +59,12 @@ export function sanitiseSettings(raw: unknown): PersistedState {
     }
 
     if (provider === 'cloudflare') {
+      // Only the key ID is required here. The API token is deliberately absent
+      // from persisted settings — it lives in the OS keychain — so requiring
+      // it would discard a perfectly valid configuration on every save.
       const keyId = typeof turn.keyId === 'string' ? turn.keyId.trim() : ''
       const apiToken = typeof turn.apiToken === 'string' ? turn.apiToken.trim() : ''
-      if (keyId && apiToken) next.turn = { ...base, keyId, apiToken }
+      if (keyId) next.turn = apiToken ? { ...base, keyId, apiToken } : { ...base, keyId }
     } else if (base.url && base.username && base.credential) {
       next.turn = base
     }

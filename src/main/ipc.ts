@@ -250,8 +250,12 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     if (!turn) return { ok: false, message: 'No relay configured.' }
     try {
       if (turn.provider === 'cloudflare') {
-        if (!turn.keyId || !turn.apiToken) {
-          return { ok: false, message: 'Both the key ID and API token are required.' }
+        if (!turn.keyId) return { ok: false, message: 'Enter the TURN key ID.' }
+        if (!turn.apiToken) {
+          return {
+            ok: false,
+            message: 'No API token stored. Paste the token again — it is saved as you type.',
+          }
         }
         const servers = await fetchCloudflareIceServers(http, turn.keyId, turn.apiToken, logger)
         const relayed = servers.filter((s) => s.username).length
