@@ -88,6 +88,16 @@ function iceServers(
   return servers
 }
 
+/**
+ * IPv4 or IPv6. This matters more than it looks: IPv6 has no NAT, so a pair of
+ * IPv6 candidates can connect directly where IPv4 needs hole punching or a relay.
+ */
+function candidateFamily(candidate: string): 'v4' | 'v6' {
+  // "candidate:<foundation> <component> <proto> <priority> <address> <port> ..."
+  const address = candidate.split(/\s+/)[4] ?? ''
+  return address.includes(':') ? 'v6' : 'v4'
+}
+
 /** Coarse type of an ICE candidate, for diagnosing NAT problems. */
 function candidateType(candidate: string): string {
   const match = /\btyp\s+(\w+)/.exec(candidate)
@@ -304,8 +314,10 @@ export class ConnectionManager {
         if (!event.candidate) return
         localCandidates.push(event.candidate.toJSON())
         const type = candidateType(event.candidate.candidate)
-        const family = (event.candidate.address ?? '').includes(':') ? 'v6' : 'v4'
-        const key = `${type}/${family}`
+        // Parse the candidate string rather than trusting `.address`, which
+        // Chromium leaves null often enough that every IPv6 candidate was
+        // being miscounted as IPv4 — hiding the one path that needs no NAT.
+        const key = `${type}/${candidateFamily(event.candidate.candidate)}`
         localTypes.set(key, (localTypes.get(key) ?? 0) + 1)
       })
 
