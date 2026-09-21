@@ -15,6 +15,7 @@ import { createAuth, GSSV_RELYING_PARTY, XBOXLIVE_RELYING_PARTY } from '../core/
 import type { AuthArtifacts, XstsToken } from '../core/auth.js'
 import { createXhome, type StreamingSession } from '../core/xhome.js'
 import { createXccs } from '../core/xccs.js'
+import { resolveIceServers, fetchCloudflareIceServers } from '../core/turn.js'
 import { promptForAuthCode, SignInCancelled } from './auth/browser.js'
 import { loadArtifacts, saveArtifacts, clearArtifacts } from './auth/store.js'
 import type { AuthState, SessionHandle, XboxConsole } from '../shared/types.js'
@@ -201,6 +202,35 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('session:ice', async (_e, candidates: RTCIceCandidateInit[]) => {
     if (!state.streaming || !state.handle) throw new Error('No active session')
     return xhome.exchangeIce(state.streaming, state.handle, candidates)
+  })
+
+  ipcMain.handle('session:relayServers', async () => {
+    return resolveIceServers(http, loadSettings().turn, logger)
+  })
+
+  /** Verify a relay before relying on it: mistyped credentials fail like a
+   *  network fault once a session is underway. */
+  ipcMain.handle('relay:test', async (_e, turn: PersistedState['turn']) => {
+    if (!turn) return { ok: false, message: 'No relay configured.' }
+    try {
+      if (turn.provider === 'cloudflare') {
+        if (!turn.keyId || !turn.apiToken) {
+          return { ok: false, message: 'Both the key ID and API token are required.' }
+        }
+        const servers = await fetchCloudflareIceServers(http, turn.keyId, turn.apiToken, logger)
+        const relayed = servers.filter((s) => s.username).length
+        return {
+          ok: relayed > 0,
+          message:
+            relayed > 0
+              ? `Cloudflare issued credentials for ${relayed} relay address(es).`
+              : 'Cloudflare responded but issued no relay addresses.',
+        }
+      }
+      return { ok: true, message: 'Saved. Use "Test relay" on the connection to verify it.' }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   ipcMain.handle('session:keepalive', async () => {

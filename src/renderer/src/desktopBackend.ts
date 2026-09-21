@@ -14,5 +14,6 @@ export const desktopBackend: StreamBackend = {
   keepalive: () => window.relay.session.keepalive(),
   stopSession: () => window.relay.session.stop(),
   ensureConsoleOn: (serverId) => window.relay.consoles.ensureOn(serverId),
+  getRelayServers: () => window.relay.session.relayServers(),
   log: (level, scope, message) => window.relay.log.write(level, scope, message),
 }

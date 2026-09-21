@@ -34,5 +34,11 @@ export interface StreamBackend {
   stopSession(): Promise<void>
   /** Wake the console; resolves to whether it reported On. */
   ensureConsoleOn(serverId: string): Promise<boolean>
+  /**
+   * Relay servers to offer ICE. Resolved by the host because Cloudflare
+   * credentials are minted with a secret token that must not reach the web
+   * context.
+   */
+  getRelayServers(): Promise<RTCIceServer[]>
   log(level: LogLevel, scope: string, message: string): void
 }

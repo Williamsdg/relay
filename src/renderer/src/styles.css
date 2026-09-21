@@ -344,3 +344,10 @@ button.ghost[aria-pressed='true'] { border-color: var(--accent); color: var(--ac
   padding: 8px 10px;
 }
 .relay-settings .section-head { margin: 0; }
+
+.provider-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.provider-tabs .selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(82, 196, 106, 0.08);
+}

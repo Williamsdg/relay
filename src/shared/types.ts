@@ -95,6 +95,15 @@ export interface StreamSettings {
  * forwards the stream, which always works at the cost of an extra hop.
  */
 export interface TurnServer {
+  /**
+   * 'cloudflare' mints short-lived credentials from a long-lived key and needs
+   * no server of your own; 'custom' is any TURN server with static credentials.
+   */
+  provider: 'cloudflare' | 'custom'
+  /** Cloudflare Realtime TURN key ID. */
+  keyId?: string
+  /** Cloudflare API token. Secret — never leaves the privileged process. */
+  apiToken?: string
   /** e.g. turn:relay.example.com:3478 — add ?transport=tcp to survive UDP blocks. */
   url: string
   username: string

@@ -52,6 +52,10 @@ const api = {
     ensureOn: (serverId: string): Promise<boolean> =>
       ipcRenderer.invoke('console:ensureOn', serverId),
   },
+  relay: {
+    test: (turn: unknown): Promise<{ ok: boolean; message: string }> =>
+      ipcRenderer.invoke('relay:test', turn),
+  },
   window: {
     /** Returns the new fullscreen state. */
     toggleFullscreen: (): Promise<boolean> => ipcRenderer.invoke('window:toggleFullscreen'),
@@ -81,6 +85,8 @@ const api = {
     ice: (candidates: RTCIceCandidateInit[]): Promise<RemoteIceCandidate[]> =>
       ipcRenderer.invoke('session:ice', candidates),
     keepalive: (): Promise<void> => ipcRenderer.invoke('session:keepalive'),
+    /** Relay servers for ICE; credentials are minted in the main process. */
+    relayServers: (): Promise<RTCIceServer[]> => ipcRenderer.invoke('session:relayServers'),
     stop: (): Promise<void> => ipcRenderer.invoke('session:stop'),
     onState: (cb: (state: string) => void) => {
       const handler = (_e: unknown, s: string) => cb(s)

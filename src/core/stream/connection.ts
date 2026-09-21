@@ -13,12 +13,7 @@
  *  - reconnects are automatic and bounded, tearing the session fully down and
  *    re-provisioning rather than trying to revive a dead peer connection.
  */
-import type {
-  StreamSettings,
-  StreamStatus,
-  StreamPhase,
-  TurnServer,
-} from '../../shared/types.js'
+import type { StreamSettings, StreamStatus, StreamPhase } from '../../shared/types.js'
 import type { LogLevel } from '../ports.js'
 import { classifyError } from '../../shared/errors.js'
 import {
@@ -79,7 +74,7 @@ const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
  */
 function iceServers(
   stunServerAddress: string | null | undefined,
-  turn: TurnServer | undefined,
+  relays: RTCIceServer[],
 ): RTCIceServer[] {
   const servers: RTCIceServer[] = []
   if (stunServerAddress) {
@@ -89,14 +84,7 @@ function iceServers(
         : `stun:${stunServerAddress}`,
     })
   }
-  servers.push(...FALLBACK_ICE_SERVERS)
-  if (turn?.url) {
-    servers.push({
-      urls: turn.url,
-      username: turn.username,
-      credential: turn.credential,
-    })
-  }
+  servers.push(...FALLBACK_ICE_SERVERS, ...relays)
   return servers
 }
 
@@ -292,16 +280,19 @@ export class ConnectionManager {
       this.setPhase('negotiating', 'Negotiating the media connection')
       const stun = config.serverDetails?.stunServerAddress
       if (stun) log(`using the service's STUN server: ${stun}`)
-      const turn = this.settings.turn
-      if (turn?.url) {
-        log(`relay configured: ${turn.url}${turn.forceRelay ? ' (forced)' : ''}`)
+      const relays = await this.backend.getRelayServers()
+      const forceRelay = this.settings.turn?.forceRelay === true && relays.length > 0
+      if (relays.length > 0) {
+        log(`${relays.length} relay server(s) available${forceRelay ? ' (forced)' : ''}`)
+      } else if (this.settings.turn) {
+        log('a relay is configured but returned no servers')
       }
       const pc = new RTCPeerConnection({
-        iceServers: iceServers(stun, turn),
+        iceServers: iceServers(stun, relays),
         // Forcing relay discards host and reflexive candidates entirely, which
         // is how to verify a relay works without waiting for ICE to exhaust
         // every direct path first.
-        iceTransportPolicy: turn?.forceRelay ? 'relay' : 'all',
+        iceTransportPolicy: forceRelay ? 'relay' : 'all',
       })
       this.pc = pc
 

@@ -47,18 +47,23 @@ export function sanitiseSettings(raw: unknown): PersistedState {
   const turn = input.turn as Record<string, unknown> | undefined
   // A half-filled relay is worse than none: it would be offered to ICE, fail
   // to authenticate, and look like a network fault.
-  if (
-    turn &&
-    typeof turn.url === 'string' &&
-    turn.url.trim() &&
-    typeof turn.username === 'string' &&
-    typeof turn.credential === 'string'
-  ) {
-    next.turn = {
-      url: turn.url.trim(),
-      username: turn.username,
-      credential: turn.credential,
+  if (turn && typeof turn === 'object') {
+    const provider: 'cloudflare' | 'custom' =
+      turn.provider === 'cloudflare' ? 'cloudflare' : 'custom'
+    const base = {
+      provider,
+      url: typeof turn.url === 'string' ? turn.url.trim() : '',
+      username: typeof turn.username === 'string' ? turn.username : '',
+      credential: typeof turn.credential === 'string' ? turn.credential : '',
       forceRelay: turn.forceRelay === true,
+    }
+
+    if (provider === 'cloudflare') {
+      const keyId = typeof turn.keyId === 'string' ? turn.keyId.trim() : ''
+      const apiToken = typeof turn.apiToken === 'string' ? turn.apiToken.trim() : ''
+      if (keyId && apiToken) next.turn = { ...base, keyId, apiToken }
+    } else if (base.url && base.username && base.credential) {
+      next.turn = base
     }
   }
   return next

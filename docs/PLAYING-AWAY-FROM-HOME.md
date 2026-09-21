@@ -57,7 +57,33 @@ The console needs no changes and does not need to run anything.
 
 This adds one WireGuard hop, which is usually a few milliseconds.
 
-### 3. A TURN relay (always works, costs a little)
+### 3. A TURN relay (always works, and is what to use if you cannot get home)
+
+Options 1 and 2 both require being at your house. If you are already away, this
+is the only one you can set up from where you are.
+
+#### Cloudflare Realtime (easiest, free for far more than you will play)
+
+No server to run. Free for the first 1,000 GB of relayed traffic a month, which
+at roughly 7 GB an hour is about 140 hours of 1080p60.
+
+1. Sign in at [dash.cloudflare.com](https://dash.cloudflare.com) — a free
+   account is enough.
+2. Go to **Realtime → TURN** and create a TURN key.
+3. Copy the **key ID** and the **API token** it shows you.
+4. In Relay, open the console list, find **Relay server**, choose
+   **Cloudflare**, and paste both values.
+5. Press **Test relay**. It asks Cloudflare to issue credentials and reports
+   whether they came back.
+
+Relay mints short-lived credentials from that key before each session, so
+nothing expires mid-game. The API token is a secret and is only ever used by
+the app's privileged process — it never reaches the page that renders the
+stream.
+
+#### Your own server
+
+
 
 A TURN server is a machine with a public address that both ends *can* reach,
 which forwards the stream. It works regardless of NAT, at the cost of an extra
