@@ -325,3 +325,22 @@ button.ghost[aria-pressed='true'] { border-color: var(--accent); color: var(--ac
   border: 1px solid var(--line);
   border-radius: 8px;
 }
+
+.relay-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.relay-settings .field input {
+  font: inherit;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.relay-settings .section-head { margin: 0; }

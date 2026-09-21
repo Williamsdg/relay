@@ -13,7 +13,12 @@
  *  - reconnects are automatic and bounded, tearing the session fully down and
  *    re-provisioning rather than trying to revive a dead peer connection.
  */
-import type { StreamSettings, StreamStatus, StreamPhase } from '../../shared/types.js'
+import type {
+  StreamSettings,
+  StreamStatus,
+  StreamPhase,
+  TurnServer,
+} from '../../shared/types.js'
 import type { LogLevel } from '../ports.js'
 import { classifyError } from '../../shared/errors.js'
 import {
@@ -68,13 +73,31 @@ const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
 ]
 
-/** Build the ICE server list, preferring whatever the service told us to use. */
-function iceServers(stunServerAddress?: string | null): RTCIceServer[] {
-  if (!stunServerAddress) return FALLBACK_ICE_SERVERS
-  const url = stunServerAddress.startsWith('stun:')
-    ? stunServerAddress
-    : `stun:${stunServerAddress}`
-  return [{ urls: url }, ...FALLBACK_ICE_SERVERS]
+/**
+ * Build the ICE server list: the service's STUN server when it offers one,
+ * public STUN as a fallback, and the user's relay when configured.
+ */
+function iceServers(
+  stunServerAddress: string | null | undefined,
+  turn: TurnServer | undefined,
+): RTCIceServer[] {
+  const servers: RTCIceServer[] = []
+  if (stunServerAddress) {
+    servers.push({
+      urls: stunServerAddress.startsWith('stun:')
+        ? stunServerAddress
+        : `stun:${stunServerAddress}`,
+    })
+  }
+  servers.push(...FALLBACK_ICE_SERVERS)
+  if (turn?.url) {
+    servers.push({
+      urls: turn.url,
+      username: turn.username,
+      credential: turn.credential,
+    })
+  }
+  return servers
 }
 
 /** Coarse type of an ICE candidate, for diagnosing NAT problems. */
@@ -269,7 +292,17 @@ export class ConnectionManager {
       this.setPhase('negotiating', 'Negotiating the media connection')
       const stun = config.serverDetails?.stunServerAddress
       if (stun) log(`using the service's STUN server: ${stun}`)
-      const pc = new RTCPeerConnection({ iceServers: iceServers(stun) })
+      const turn = this.settings.turn
+      if (turn?.url) {
+        log(`relay configured: ${turn.url}${turn.forceRelay ? ' (forced)' : ''}`)
+      }
+      const pc = new RTCPeerConnection({
+        iceServers: iceServers(stun, turn),
+        // Forcing relay discards host and reflexive candidates entirely, which
+        // is how to verify a relay works without waiting for ICE to exhaust
+        // every direct path first.
+        iceTransportPolicy: turn?.forceRelay ? 'relay' : 'all',
+      })
       this.pc = pc
 
       // Collect candidates as they trickle in; the service takes them as one
@@ -280,7 +313,9 @@ export class ConnectionManager {
         if (!event.candidate) return
         localCandidates.push(event.candidate.toJSON())
         const type = candidateType(event.candidate.candidate)
-        localTypes.set(type, (localTypes.get(type) ?? 0) + 1)
+        const family = (event.candidate.address ?? '').includes(':') ? 'v6' : 'v4'
+        const key = `${type}/${family}`
+        localTypes.set(key, (localTypes.get(key) ?? 0) + 1)
       })
 
       pc.addEventListener('iceconnectionstatechange', () => {
@@ -398,6 +433,12 @@ export class ConnectionManager {
       // It does not always appear among the exchanged candidates, so offer it
       // explicitly rather than hoping ICE discovers it.
       const details = config.serverDetails
+      if (details?.ipAddress && !details.port) {
+        log(
+          `the service gave the console's address as ${details.ipAddress} but no port ` +
+            '(port 0), so there is no direct endpoint to try',
+        )
+      }
       if (details?.ipAddress && details.port) {
         const direct = `candidate:1 1 UDP 2130706431 ${details.ipAddress} ${details.port} typ host`
         log(`adding the console's direct address ${details.ipAddress}:${details.port}`)

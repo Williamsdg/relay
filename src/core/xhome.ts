@@ -372,7 +372,13 @@ export function createXhome(http: HttpApi, log: Logger) {
     for (const c of remote) {
       const m = /\btyp\s+(\w+)/.exec(c.candidate)
       const t = m ? m[1] : 'unknown'
-      types.set(t, (types.get(t) ?? 0) + 1)
+      // An IPv6 candidate can bypass NAT entirely, so the family matters as
+      // much as the type when working out why nothing connects.
+      const family = c.candidate.includes(':') && /\s[0-9a-f]*:[0-9a-f:]+\s/i.test(c.candidate)
+        ? 'v6'
+        : 'v4'
+      const key = `${t}/${family}`
+      types.set(key, (types.get(key) ?? 0) + 1)
     }
     log(
       'info',

@@ -43,5 +43,23 @@ export function sanitiseSettings(raw: unknown): PersistedState {
   if (typeof input.lastConsoleId === 'string' && input.lastConsoleId) {
     next.lastConsoleId = input.lastConsoleId
   }
+
+  const turn = input.turn as Record<string, unknown> | undefined
+  // A half-filled relay is worse than none: it would be offered to ICE, fail
+  // to authenticate, and look like a network fault.
+  if (
+    turn &&
+    typeof turn.url === 'string' &&
+    turn.url.trim() &&
+    typeof turn.username === 'string' &&
+    typeof turn.credential === 'string'
+  ) {
+    next.turn = {
+      url: turn.url.trim(),
+      username: turn.username,
+      credential: turn.credential,
+      forceRelay: turn.forceRelay === true,
+    }
+  }
   return next
 }

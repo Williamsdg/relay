@@ -82,6 +82,28 @@ export interface StreamSettings {
   stallTimeoutSeconds: number
   /** Wake the console automatically if it is in standby. */
   autoWake: boolean
+  /** Optional relay, for networks where no direct path exists. */
+  turn?: TurnServer
+}
+
+/**
+ * A relay used when no direct path between this device and the console exists.
+ *
+ * Away from home both ends are usually behind NAT, and if either is symmetric
+ * the reflexive candidates never pair up — the port mapping is only valid for
+ * the STUN server that observed it. A TURN server sits in the middle and
+ * forwards the stream, which always works at the cost of an extra hop.
+ */
+export interface TurnServer {
+  /** e.g. turn:relay.example.com:3478 — add ?transport=tcp to survive UDP blocks. */
+  url: string
+  username: string
+  credential: string
+  /**
+   * Force every packet through the relay instead of only falling back to it.
+   * Slower, but it proves the relay works without waiting on ICE to give up.
+   */
+  forceRelay: boolean
 }
 
 export const DEFAULT_SETTINGS: StreamSettings = {

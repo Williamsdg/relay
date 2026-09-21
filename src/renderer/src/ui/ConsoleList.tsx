@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { XboxConsole, StreamSettings } from '../../../shared/types.js'
+import { RelaySettings } from './RelaySettings.js'
 
 function powerLabel(state: string): { text: string; tone: string } {
   switch (state) {
@@ -142,6 +143,8 @@ export function ConsoleList({
             </span>
           </span>
         </label>
+
+        <RelaySettings settings={settings} onChange={onSettingsChange} />
 
         {consoles.some((c) => c.powerState === 'Off') && (
           <p className="muted small">
